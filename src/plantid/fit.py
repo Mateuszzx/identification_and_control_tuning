@@ -2,12 +2,14 @@
 
 from dataclasses import dataclass
 
+import lmfit
 import numpy as np
 import polars as pl
-from scipy.optimize import least_squares
+
+import control
 
 from plantid.models import Model
-from plantid.plant import Plant
+from plantid.plant import io_system, proportional_response
 
 
 @dataclass
@@ -15,28 +17,30 @@ class FitResult:
     """One fitted model."""
 
     model: Model
-    plant: Plant
+    plant: control.NonlinearIOSystem
     rmse: float
     at_bound: bool
     prediction: np.ndarray
     kp: float
 
     @property
-    def system(self):
+    def system(self) -> control.TransferFunction:
         """python-control transfer function of the linear part."""
-        return self.plant.system
+        return self.plant.linear
 
     @property
     def gain(self) -> float:
-        return self.plant.gain
+        return float(self.plant.params["gain"])
 
     @property
     def taus(self) -> tuple[float, ...]:
-        return self.plant.taus
+        return tuple(self.plant.params["taus"])
 
     @property
     def fc(self) -> float | None:
-        return self.plant.fc if self.model.friction else None
+        if not self.model.friction:
+            return None
+        return float(self.plant.params["fc"])
 
     def formula(self) -> str:
         taus = tuple(sorted(self.taus, reverse=True))
@@ -95,31 +99,34 @@ def fit_model(
     *,
     kp: float,
 ) -> FitResult:
-    """Output-error fit of a single model in a P loop with gain ``kp``."""
+    """Output-error fit of a single model in a P loop with gain ``kp``.
+
+    lmfit minimizes the squared error between the measured output and the
+    simulated P loop. Gain, time constants and friction are fitted in log space.
+    """
     time = np.asarray(time, dtype=float)
     setpoint = np.asarray(setpoint, dtype=float)
     measurement = np.asarray(measurement, dtype=float)
     y0 = float(measurement[0])
-    lower, upper, x0 = _bounds(model)
+    params = _parameters(model)
 
-    def residual(p: np.ndarray) -> np.ndarray:
-        plant = _plant_from_log(model, p)
-        return plant.simulate(time, setpoint, kp, y0) - measurement
+    def residual(pars: lmfit.Parameters) -> np.ndarray:
+        plant = _plant_from_log(model, _vector(pars, model))
+        return proportional_response(plant, time, setpoint, kp, y0) - measurement
 
-    result = least_squares(
+    result = lmfit.minimize(
         residual,
-        x0,
-        bounds=(lower, upper),
+        params,
+        method="least_squares",
+        max_nfev=40,
         xtol=1e-10,
         ftol=1e-8,
         gtol=1e-8,
-        max_nfev=40,
     )
-    plant = _plant_from_log(model, result.x)
-    prediction = plant.simulate(time, setpoint, kp, y0)
+    plant = _plant_from_log(model, _vector(result.params, model))
+    prediction = proportional_response(plant, time, setpoint, kp, y0)
     rmse = float(np.sqrt(np.mean(np.square(prediction - measurement))))
-    at_bound = bool(np.any(np.abs(result.x - lower) < 1e-3) or np.any(np.abs(result.x - upper) < 1e-3))
-    return FitResult(model, plant, rmse, at_bound, prediction, float(kp))
+    return FitResult(model, plant, rmse, _at_bound(result.params), prediction, float(kp))
 
 
 def search(
@@ -138,7 +145,8 @@ def search(
     return Fit(results, kp)
 
 
-def _bounds(model: Model) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+def _parameters(model: Model) -> lmfit.Parameters:
+    """Log-space parameters. Exponentiating them keeps gain, τ and Fc positive."""
     n = model.order
     if model.kind == "inertial":
         gain0 = np.log(20.0 if model.friction else 8.0)
@@ -146,18 +154,32 @@ def _bounds(model: Model) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     else:
         gain0 = np.log(0.8)
         tau0 = np.log(np.geomspace(0.2, 0.05, n)) if n else np.array([])
-    x0 = [gain0, *tau0]
-    lower = [-2.0, *([-7.0] * n)]
-    upper = [8.0, *([8.0] * n)]
+    params = lmfit.Parameters()
+    params.add("log_gain", value=float(gain0), min=-2.0, max=8.0)
+    for index, value in enumerate(tau0):
+        params.add(f"log_tau_{index}", value=float(value), min=-7.0, max=8.0)
     if model.friction:
-        x0.append(np.log(10.0))
-        lower.append(0.0)
-        upper.append(3.5)
-    return np.asarray(lower), np.asarray(upper), np.asarray(x0, dtype=float)
+        params.add("log_fc", value=float(np.log(10.0)), min=0.0, max=3.5)
+    return params
 
 
-def _plant_from_log(model: Model, p: np.ndarray) -> Plant:
+def _vector(params: lmfit.Parameters, model: Model) -> np.ndarray:
+    values = [params["log_gain"].value]
+    values.extend(params[f"log_tau_{index}"].value for index in range(model.order))
+    if model.friction:
+        values.append(params["log_fc"].value)
+    return np.asarray(values, dtype=float)
+
+
+def _at_bound(params: lmfit.Parameters) -> bool:
+    for par in params.values():
+        if abs(par.value - par.min) < 1e-3 or abs(par.value - par.max) < 1e-3:
+            return True
+    return False
+
+
+def _plant_from_log(model: Model, p: np.ndarray) -> control.NonlinearIOSystem:
     gain = float(np.exp(p[0]))
     taus = tuple(sorted((float(np.exp(v)) for v in p[1 : 1 + model.order]), reverse=True))
     fc = float(np.exp(p[-1])) if model.friction else 0.0
-    return Plant(model.kind, gain, taus, fc)
+    return io_system(model.kind, gain, taus, fc)

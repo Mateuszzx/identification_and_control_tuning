@@ -18,7 +18,9 @@ import numpy as np
 import polars as pl
 from scipy.optimize import minimize
 
-from plantid.plant import Plant
+import control
+
+from plantid.plant import initial_state, step
 
 DT = 15e-3
 ENCODER_STEP = 360.0 / 2048.0
@@ -156,7 +158,7 @@ def steps(levels, hold: float, dt: float) -> np.ndarray:
 
 
 def simulate(
-    plant: Plant,
+    plant: control.NonlinearIOSystem,
     reference: np.ndarray,
     gains: Gains,
     *,
@@ -173,21 +175,21 @@ def simulate(
     """
     limits = _with_dead_zone(limits, dead_zone)
     pid = FirmwarePID(gains, limits)
-    state = plant.initial_state(y0)
+    state = initial_state(plant, y0)
     y_now = float(y0)
     y = np.empty(len(reference))
     u = np.empty(len(reference))
     for i, setpoint in enumerate(reference):
         measured = _quantise(y_now, encoder_step)
         command = pid.step(float(setpoint), measured, dt)
-        state, y_now = plant.step(state, command, dt)
+        state, y_now = step(plant, state, command, dt)
         y[i] = y_now
         u[i] = command
     return Trajectory(y, u)
 
 
 def tune(
-    plant: Plant,
+    plant: control.NonlinearIOSystem,
     *,
     dt: float = DT,
     levels=LOG_STEPS,
@@ -205,8 +207,8 @@ def tune(
 ) -> Tuning:
     """Minimize the integral of squared setpoint error.
 
-    ``plant`` is an input. This function does not identify it and does not read
-    a fit result. Build the plant with :class:`~plantid.plant.Plant` and pass it in.
+    ``plant`` is a python-control :class:`~control.NonlinearIOSystem` from
+    :func:`plantid.io_system`. This function does not identify it.
 
     ``kp``, ``ki`` and ``kd`` are the search limits ``(low, high)``. A single
     number, or equal ends, fixes that gain. ``kd`` defaults to ``(0, 0)``, so
@@ -303,7 +305,7 @@ def tune(
         steps=pl.concat([_step_frame(baseline, base_score), _step_frame(gains, score)]),
         dt=dt,
         limits=limits,
-        fc=float(plant.fc),
+        fc=float(plant.params["fc"]),
         we=float(we),
         cost=float(chosen["ise"]),
         meets_spec=feasible,
@@ -369,7 +371,7 @@ def _end_excess(
     y,
     count: int,
     limit: float,
-    plant: Plant,
+    plant: control.NonlinearIOSystem,
     gains: Gains,
     limits: Limits,
     dt: float,
@@ -398,18 +400,24 @@ def _end_excess(
     return total
 
 
-def _holding_command(plant: Plant, setpoint: float) -> float:
+def _holding_command(plant: control.NonlinearIOSystem, setpoint: float) -> float:
     """Actuator command that keeps ``setpoint`` once the plant has stopped.
 
     An inertial plant needs ``Fc + |y| / K``. An integrator only has to cover
     Coulomb friction.
     """
-    if plant.kind == "integrator" or plant.gain <= 0.0:
-        return float(plant.fc)
-    return float(plant.fc) + abs(float(setpoint)) / plant.gain
+    fc = float(plant.params["fc"])
+    if plant.params["kind"] == "integrator" or float(plant.params["gain"]) <= 0.0:
+        return fc
+    return fc + abs(float(setpoint)) / float(plant.params["gain"])
 
 
-def _ki_that_holds(plant: Plant, levels, limits: Limits, dt: float) -> float:
+def ki_that_holds(plant: control.NonlinearIOSystem, levels, limits: Limits, dt: float) -> float:
+    """Smallest ``Ki`` for which the integrator alone can hold every level."""
+    return _ki_that_holds(plant, levels, limits, dt)
+
+
+def _ki_that_holds(plant: control.NonlinearIOSystem, levels, limits: Limits, dt: float) -> float:
     """Smallest ``Ki`` for which the integrator alone can hold every level."""
     needed = max(_holding_command(plant, float(level)) for level in levels)
     if needed <= 0.0:
@@ -420,7 +428,7 @@ def _ki_that_holds(plant: Plant, levels, limits: Limits, dt: float) -> float:
     return needed / rate
 
 
-def _resting_error(plant: Plant, setpoint: float, gains: Gains, limits: Limits, dt: float) -> float:
+def _resting_error(plant: control.NonlinearIOSystem, setpoint: float, gains: Gains, limits: Limits, dt: float) -> float:
     """Position error left when the integrator is at its limit and the plant has stopped.
 
     Whatever the integral cannot supply is left to ``Kp``, which takes a

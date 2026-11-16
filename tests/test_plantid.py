@@ -1,4 +1,6 @@
+import tempfile
 import unittest
+from pathlib import Path
 
 import control
 import numpy as np
@@ -18,50 +20,62 @@ from plantid import (
     simulate,
     tune,
 )
-from plantid.plant import Plant
+from plantid.plant import initial_state, io_system, load, proportional_response, save, step
 
 
 class PlantIdentificationTest(unittest.TestCase):
+    def test_plant_json_roundtrip_keeps_the_dynamics(self):
+        plant = io_system("inertial", gain=2.5, taus=(1.5, 0.2), fc=4.0)
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "plant.json"
+            save(plant, path, model="inercyjny 2 + tarcie", kp=1.0, rmse=0.2)
+            loaded = load(path)
+        self.assertIsInstance(loaded, control.NonlinearIOSystem)
+        self.assertEqual(loaded.params["kind"], plant.params["kind"])
+        self.assertEqual(loaded.params["gain"], plant.params["gain"])
+        self.assertEqual(loaded.params["taus"], plant.params["taus"])
+        self.assertEqual(loaded.params["fc"], plant.params["fc"])
+
     def test_open_loop_matches_python_control(self):
-        plant = Plant("inertial", gain=4.0, taus=(0.3,), fc=0.0)
+        plant = io_system("inertial", gain=4.0, taus=(0.3,), fc=0.0)
         dt = 0.001
         time = np.arange(0.0, 3.0, dt)
         command = np.ones_like(time)
-        state = plant.initial_state(0.0)
+        state = initial_state(plant, 0.0)
         y = np.empty_like(time)
         y[0] = 0.0
         for i in range(len(time) - 1):
-            state, y[i + 1] = plant.step(state, command[i], dt)
-        response = control.forced_response(plant.system, time, command)
+            state, y[i + 1] = step(plant, state, command[i], dt)
+        response = control.forced_response(plant.linear, time, command)
         reference = np.squeeze(response.outputs)
         self.assertLess(np.max(np.abs(y - reference)), 0.02)
 
     def test_closed_loop_matches_feedback(self):
-        plant = Plant("inertial", gain=3.0, taus=(0.4,), fc=0.0)
+        plant = io_system("inertial", gain=3.0, taus=(0.4,), fc=0.0)
         kp = 2.0
         dt = 0.001
         time = np.arange(0.0, 4.0, dt)
         setpoint = np.ones_like(time)
-        y = plant.simulate(time, setpoint, kp, 0.0)
-        loop = closed_loop(plant.system, kp)
+        y = proportional_response(plant, time, setpoint, kp, 0.0)
+        loop = closed_loop(plant.linear, kp)
         reference = np.squeeze(control.forced_response(loop, time, setpoint).outputs)
         self.assertLess(np.max(np.abs(y - reference)), 0.05)
 
     def test_recovers_integrator_with_friction(self):
-        true = Plant("integrator", gain=0.8, taus=(), fc=9.0)
+        true = io_system("integrator", gain=0.8, taus=(), fc=9.0)
         time = np.arange(0.0, 16.0, 0.02)
         setpoint = np.where(time < 8.0, 40.0, -20.0)
-        measured = true.simulate(time, setpoint, kp=1.0, y0=0.0)
+        measured = proportional_response(true, time, setpoint, 1.0, 0.0)
         fitted = fit_model(time, setpoint, measured, integrator(friction=True), kp=1.0)
         self.assertAlmostEqual(fitted.gain, 0.8, delta=0.05)
         self.assertAlmostEqual(fitted.fc, 9.0, delta=0.3)
         self.assertLess(fitted.rmse, 0.05)
 
     def test_search_ranks_the_generating_model_first(self):
-        true = Plant("inertial", gain=5.0, taus=(0.5, 0.1), fc=4.0)
+        true = io_system("inertial", gain=5.0, taus=(0.5, 0.1), fc=4.0)
         time = np.arange(0.0, 12.0, 0.02)
         setpoint = np.where(time < 6.0, 20.0, 0.0)
-        measured = true.simulate(time, setpoint, kp=1.0, y0=0.0)
+        measured = proportional_response(true, time, setpoint, 1.0, 0.0)
         found = search(
             time,
             setpoint,
@@ -106,7 +120,7 @@ class FirmwarePidTest(unittest.TestCase):
         self.assertEqual(clamped.acc, 2.0)
 
     def test_dead_zone_parameter_blanks_one_count(self):
-        plant = Plant("integrator", gain=0.8, taus=(), fc=9.0)
+        plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
         tuned = tune(
             plant,
             dt=0.05,
@@ -126,13 +140,13 @@ class FirmwarePidTest(unittest.TestCase):
         self.assertGreater(abs(pid.step(2 * ENCODER_STEP, 0.0, 0.015)), 0.0)
 
     def test_proportional_loop_stops_at_friction(self):
-        plant = Plant("integrator", gain=0.8, taus=(), fc=9.0)
+        plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
         reference = np.full(400, 40.0)
         y, _ = simulate(plant, reference, Gains(1.0, 0.0, 0.0), dt=0.02, encoder_step=None)
         self.assertAlmostEqual(y[-1], 31.0, delta=0.5)
 
     def test_tune_takes_a_plant_and_scores_every_logged_step(self):
-        plant = Plant("integrator", gain=0.8, taus=(), fc=9.0)
+        plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
         tuned = tune(
             plant,
             dt=0.05,
@@ -145,7 +159,7 @@ class FirmwarePidTest(unittest.TestCase):
             max_overshoot=200.0,
             max_final_error=5.0,
         )
-        self.assertEqual(tuned.fc, plant.fc)
+        self.assertEqual(tuned.fc, plant.params["fc"])
         self.assertEqual(tuned.gains.kp, 1.0)
         self.assertEqual(tuned.gains.kd, 0.0)
         self.assertGreater(tuned.gains.ki, 1.0)
@@ -158,7 +172,7 @@ class FirmwarePidTest(unittest.TestCase):
         self.assertEqual(moves, [-30.0, -60.0, -90.0, 30.0, 60.0, 90.0])
 
     def test_tune_keeps_the_gain_that_tracks_the_setpoint(self):
-        plant = Plant("integrator", gain=0.8, taus=(), fc=9.0)
+        plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
         tuned = tune(
             plant,
             dt=0.05,
@@ -175,7 +189,7 @@ class FirmwarePidTest(unittest.TestCase):
         self.assertEqual(tuned.gains.ki, 0.0)
 
     def test_tune_rejects_a_lower_ise_that_stops_short_of_the_setpoint(self):
-        plant = Plant("inertial", gain=321.2, taus=(427.0, 0.07, 0.07), fc=10.16)
+        plant = io_system("inertial", gain=321.2, taus=(427.0, 0.07, 0.07), fc=10.16)
         tuned = tune(
             plant,
             dt=0.015,
@@ -192,12 +206,12 @@ class FirmwarePidTest(unittest.TestCase):
         )
         self.assertGreater(tuned.gains.ki, 5.0)
         i_max = tuned.limits.anti_windup * tuned.dt * tuned.gains.ki
-        self.assertGreaterEqual(i_max, plant.fc + 90.0 / plant.gain)
+        self.assertGreaterEqual(i_max, plant.params["fc"] + 90.0 / plant.params["gain"])
         worst = max(step.abs_final_deg for step in tuned.score.steps)
         self.assertLess(worst, 0.2)
 
     def test_tune_does_not_raise_ki_above_the_caller_limit(self):
-        plant = Plant("inertial", gain=1.0, taus=(1.0,), fc=4.0)
+        plant = io_system("inertial", gain=1.0, taus=(1.0,), fc=4.0)
         tuned = tune(
             plant,
             dt=0.015,
@@ -213,7 +227,7 @@ class FirmwarePidTest(unittest.TestCase):
         self.assertEqual(tuned.gains.ki, 20.0)
 
     def test_tune_can_leave_a_steady_state_error_when_asked(self):
-        plant = Plant("inertial", gain=321.2, taus=(427.0, 0.07, 0.07), fc=10.16)
+        plant = io_system("inertial", gain=321.2, taus=(427.0, 0.07, 0.07), fc=10.16)
         tuned = tune(
             plant,
             dt=0.015,

@@ -1,7 +1,7 @@
 """Plant identification and firmware-PID tuning, with python-control models."""
 
 from plantid.fit import Fit, FitResult, fit_model, loop_gain, search
-from plantid.plant import Plant
+from plantid.plant import io_system, load, save
 from plantid.models import Model, default_models, inertial, integrator
 from plantid.pid import (
     DT,
@@ -11,6 +11,7 @@ from plantid.pid import (
     Gains,
     Limits,
     Tuning,
+    ki_that_holds,
     simulate,
     steps,
     tune,
@@ -27,13 +28,16 @@ __all__ = [
     "Gains",
     "Limits",
     "Model",
-    "Plant",
     "Tuning",
     "closed_loop",
     "default_models",
     "fit_model",
     "inertial",
     "integrator",
+    "io_system",
+    "load",
+    "save",
+    "ki_that_holds",
     "loop_gain",
     "search",
     "simulate",
