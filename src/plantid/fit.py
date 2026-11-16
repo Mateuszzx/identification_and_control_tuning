@@ -2,11 +2,10 @@
 
 from dataclasses import dataclass
 
+import control
 import lmfit
 import numpy as np
 import polars as pl
-
-import control
 
 from plantid.models import Model
 from plantid.plant import io_system, proportional_response

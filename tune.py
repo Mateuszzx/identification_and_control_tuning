@@ -1,14 +1,17 @@
 """Tune a firmware PID for a plant saved by identify.py.
 
 The waveform and the gain limits come from ``config/config.yaml``. Run
-``python tune.py``. ``method`` in the config selects Powell or PyGAD. This
-script does not identify the plant.
+``python tune.py``. ``method`` in the config selects Powell or PyGAD. The
+figure is written to ``output/tune.png``. This script does not identify the plant.
 """
 
 from pathlib import Path
 
+import numpy as np
+
 import pidtune
 import plantid
+from plantid.plots import save_tune
 
 ROOT = Path(__file__).resolve().parent
 CFG = plantid.load_config(ROOT / "config" / "config.yaml", root=ROOT).tune
@@ -34,6 +37,10 @@ def main() -> None:
         population=CFG.population,
     )
     print(tuned)
+    figure = ROOT / "output" / "tune.png"
+    show_t = np.arange(len(tuned.reference)) * CFG.dt
+    save_tune(figure, show_t, tuned.reference, tuned.response, tuned.output)
+    print(f"saved {figure}")
 
 
 if __name__ == "__main__":

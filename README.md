@@ -44,6 +44,16 @@ The same search is in `notebooks/tune.ipynb`.
 
 The simulated controller follows the firmware law. The error is cleared inside the dead zone, the accumulator is clamped to `±anti_windup`, the derivative on the first sample starts from a previous error of zero, and the output is lifted to `±min_output` and clipped to `±max_output`.
 
+## Commands
+
+[just](https://github.com/casey/just) runs the common tasks from the repository root.
+
+- `just check` lints and runs the tests. Continuous integration runs this on every push and pull request.
+- `just identify` fits the plant and writes `output/identify.png`.
+- `just tune` tunes the PID and writes `output/tune.png`.
+
+`output/` holds those figures. The image files are gitignored. Identify and tune stay off the CI workflow because the logs in `data/` are not in the repository.
+
 ## Tests
 
 ```bash

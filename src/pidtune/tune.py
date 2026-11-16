@@ -85,9 +85,7 @@ def tune(
 
     def score(genes: np.ndarray) -> tuple[Gains, float, np.ndarray, np.ndarray]:
         gains = _clip(genes, spans)
-        y, u = simulate(
-            plant, reference, gains, dt=dt, limits=limits, encoder_step=encoder_step
-        )
+        y, u = simulate(plant, reference, gains, dt=dt, limits=limits, encoder_step=encoder_step)
         ise = float(np.sum(np.square(reference - y)) * dt * we)
         return gains, ise, y, u
 
@@ -141,7 +139,14 @@ def _powell(score, spans, reference) -> Solution:
     return Solution(gains, ise, reference, response, output)
 
 
-def _pygad(score, spans, reference, generations: int, population: int, seed: int | None) -> Solution:
+def _pygad(
+    score,
+    spans,
+    reference,
+    generations: int,
+    population: int,
+    seed: int | None,
+) -> Solution:
     def fitness(_ga, genes, _index) -> float:
         _gains, ise, _y, _u = score(genes)
         return -ise

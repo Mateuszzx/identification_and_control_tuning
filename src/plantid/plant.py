@@ -24,7 +24,9 @@ def deadzone(command: float, fc: float) -> float:
     return float(np.sign(command) * max(abs(command) - fc, 0.0))
 
 
-def io_system(kind: str, gain: float, taus: tuple[float, ...], fc: float) -> control.NonlinearIOSystem:
+def io_system(
+    kind: str, gain: float, taus: tuple[float, ...], fc: float
+) -> control.NonlinearIOSystem:
     """Continuous plant: linear dynamics with a Coulomb dead-zone on the input."""
     linear, states = _realization(kind, gain, taus)
     params = {

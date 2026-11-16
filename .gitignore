@@ -9,5 +9,8 @@ wheels/
 # Virtual environments
 .venv
 
-
 data/
+
+# Figures written by identify.py and tune.py
+output/*
+!output/.gitkeep

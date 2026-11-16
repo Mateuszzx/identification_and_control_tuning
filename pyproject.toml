@@ -29,4 +29,14 @@ packages = ["src/plantid", "src/pidtune"]
 [dependency-groups]
 dev = [
     "pytest>=9.2.0",
+    "ruff>=0.14.0",
 ]
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+src = ["src"]
+extend-exclude = ["notebooks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I"]

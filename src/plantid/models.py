@@ -14,7 +14,6 @@ An integrator with ``n`` lags is
 from dataclasses import dataclass
 from typing import Literal
 
-
 Kind = Literal["inertial", "integrator"]
 
 
@@ -53,6 +52,8 @@ def integrator(lags: int = 0, *, friction: bool = True, name: str | None = None)
 
 def default_models() -> list[Model]:
     """Inertial orders 1–3, with and without friction, plus integrators with 0–2 lags."""
-    models = [inertial(order, friction=friction) for order in (1, 2, 3) for friction in (False, True)]
+    models = [
+        inertial(order, friction=friction) for order in (1, 2, 3) for friction in (False, True)
+    ]
     models.extend(integrator(lags, friction=True) for lags in (0, 1, 2))
     return models

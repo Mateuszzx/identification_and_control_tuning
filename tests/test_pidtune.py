@@ -4,9 +4,9 @@ from pathlib import Path
 
 import control
 
-from plantid.plant import io_system, save
-from plantid.pid import Limits, ki_that_holds
 import pidtune
+from plantid.pid import Limits, ki_that_holds
+from plantid.plant import io_system, save
 
 
 class PidTuneTest(unittest.TestCase):
