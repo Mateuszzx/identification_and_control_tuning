@@ -1,20 +1,21 @@
-"""Genetic tuning of the firmware PID.
+"""Tuning of the firmware PID.
 
-PyGAD maximizes a fitness function. The cost of one candidate is the integral
-of squared setpoint error from a simulation of ``PID.cpp``, so the fitness is
-the negative of that cost. Pyomo is not used: the loop is a clipped discrete
-simulation, not a set of algebraic constraints.
+``method`` selects the search. ``powell`` is a local bound-constrained search
+started from the low, middle, and high end of each free gain. ``pygad`` is a
+genetic search of the same box. Both score a candidate by the integral of
+squared setpoint error from a simulation of ``PID.cpp``.
 """
 
 import logging
 from dataclasses import dataclass, replace
+from itertools import product
 
+import control
 import numpy as np
 import pygad
+from scipy.optimize import minimize
 
 from plantid.pid import DT, ENCODER_STEP, Gains, Limits, ki_that_holds, simulate, steps
-import control
-
 from plantid.plant import load
 
 log = logging.getLogger("pidtune")
@@ -27,7 +28,7 @@ def load_plant(path) -> control.NonlinearIOSystem:
 
 @dataclass(frozen=True)
 class Solution:
-    """Gains chosen by PyGAD, and the waveform they were scored on."""
+    """Gains chosen by the search, and the waveform they were scored on."""
 
     gains: Gains
     ise: float
@@ -58,19 +59,22 @@ def tune(
     encoder_step: float | None = ENCODER_STEP,
     we: float = 1.0,
     allow_steady_state_error: bool = False,
+    method: str = "pygad",
     generations: int = 40,
     population: int = 24,
     seed: int | None = 1,
 ) -> Solution:
-    """Search ``kp``, ``ki`` and ``kd`` with PyGAD.
+    """Search ``kp``, ``ki`` and ``kd``.
 
     ``levels`` is the setpoint waveform. Each value is held for ``hold`` seconds.
+    ``method`` is ``powell`` or ``pygad``. Both minimize the same simulated ISE
+    and stay inside the caller's gain limits.
 
     ``allow_steady_state_error`` left false raises the ``Ki`` floor, inside the
     caller's range, to the gain that can hold every level. True searches the
     whole supplied ``Ki`` range and keeps a shelf when that scores a lower ISE.
-    The search never leaves the caller's upper limits.
     """
+    method = _method(method)
     limits = _with_dead_zone(limits, dead_zone)
     reference = steps(levels, hold, dt)
     spans = {"kp": _span(kp), "ki": _span(ki), "kd": _span(kd)}
@@ -93,6 +97,51 @@ def tune(
         )
         return Solution(gains, ise, reference, response, output)
 
+    if method == "powell":
+        return _powell(score, spans, reference)
+    return _pygad(score, spans, reference, generations, population, seed)
+
+
+def _method(value) -> str:
+    name = str(value).strip().lower()
+    if name not in ("powell", "pygad"):
+        raise ValueError(f"tune method must be 'powell' or 'pygad', got {value!r}")
+    return name
+
+
+def _powell(score, spans, reference) -> Solution:
+    """Powell from the low, middle, and high end of every free gain.
+
+    The returned point is the visited candidate with the smallest ISE. Powell's
+    own final point is one of those visits.
+    """
+    names = ("kp", "ki", "kd")
+    free = [name for name in names if spans[name][1] - spans[name][0] > 1e-12]
+    fixed = {name: spans[name][0] for name in names if name not in free}
+    bounds = [spans[name] for name in free]
+    visited: list[tuple[Gains, float, np.ndarray, np.ndarray]] = []
+
+    def evaluate(point: np.ndarray) -> float:
+        values = dict(fixed)
+        values.update(zip(free, point))
+        result = score(np.array([values[name] for name in names]))
+        visited.append(result)
+        return result[1]
+
+    starts = _box_starts(bounds)
+    best_start = min(starts, key=evaluate)
+    minimize(
+        evaluate,
+        best_start,
+        method="Powell",
+        bounds=bounds,
+        options={"maxfev": 40, "xtol": 1e-3, "ftol": 1e-3},
+    )
+    gains, ise, response, output = min(visited, key=lambda item: item[1])
+    return Solution(gains, ise, reference, response, output)
+
+
+def _pygad(score, spans, reference, generations: int, population: int, seed: int | None) -> Solution:
     def fitness(_ga, genes, _index) -> float:
         _gains, ise, _y, _u = score(genes)
         return -ise
@@ -132,6 +181,12 @@ def _span(values) -> tuple[float, float]:
     if len(vals) == 1:
         return vals[0], vals[0]
     return min(vals), max(vals)
+
+
+def _box_starts(bounds: list[tuple[float, float]]) -> list[np.ndarray]:
+    """Low end, middle and high end of every free gain."""
+    axes = [(lo, 0.5 * (lo + hi), hi) for lo, hi in bounds]
+    return [np.asarray(point, dtype=float) for point in product(*axes)]
 
 
 def _gene(lo: float, hi: float):

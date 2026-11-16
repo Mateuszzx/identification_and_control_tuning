@@ -64,6 +64,39 @@ class PidTuneTest(unittest.TestCase):
         self.assertLessEqual(tuned.gains.ki, 1.0)
         self.assertEqual(tuned.gains.kp, 2.0)
 
+    def test_powell_stays_inside_the_caller_limits(self):
+        plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
+        tuned = pidtune.tune(
+            plant,
+            levels=(0.0, 20.0, 0.0),
+            hold=1.0,
+            dt=0.05,
+            kp=(1.0, 4.0),
+            ki=(0.0, 8.0),
+            kd=(0.0,),
+            encoder_step=None,
+            allow_steady_state_error=False,
+            method="powell",
+        )
+        floor = ki_that_holds(plant, (0.0, 20.0, 0.0), Limits(), 0.05)
+        self.assertGreaterEqual(tuned.gains.kp, 1.0)
+        self.assertLessEqual(tuned.gains.kp, 4.0)
+        self.assertGreaterEqual(tuned.gains.ki, floor)
+        self.assertLessEqual(tuned.gains.ki, 8.0)
+        self.assertEqual(tuned.gains.kd, 0.0)
+
+    def test_unknown_method_is_rejected(self):
+        plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
+        with self.assertRaises(ValueError):
+            pidtune.tune(
+                plant,
+                levels=(0.0, 20.0),
+                hold=1.0,
+                kp=(1.0, 2.0),
+                ki=(0.0, 1.0),
+                method="pyomo",
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

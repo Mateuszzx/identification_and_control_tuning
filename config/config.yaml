@@ -1,0 +1,22 @@
+# Paths are relative to the repository root.
+# Identification reads the log and writes the plant. Tuning reads that plant.
+
+identify:
+  log: data/fr_turn_pid_ground.csv
+  out: model/plant.json
+
+tune:
+  plant: model/plant.json
+  dt: 0.015
+  dead_zone: 0.1
+  hold: 6.0
+  levels: [0, -30, 0, -60, 0, -90, 0, 30, 0, 60, 0, 90, 0]
+  kp: [1.0, 10.0]
+  ki: [0.0, 3.0]
+  kd: [0.0, 0.5]
+  we: 1.0
+  allow_steady_state_error: false
+  # powell or pygad. Both minimize the same simulated ISE.
+  method: pygad
+  generations: 40
+  population: 24

@@ -1,7 +1,7 @@
 """Identify a plant from a closed-loop P log and save it as JSON.
 
-Edit the paths below, then run ``python identify.py``. The tuning script reads
-the file this writes. This script does not choose PID gains.
+Paths come from ``config/config.yaml``. Run ``python identify.py``. The tuning
+script reads the plant this writes. This script does not choose PID gains.
 """
 
 from pathlib import Path
@@ -10,15 +10,16 @@ import polars as pl
 
 import plantid
 
-# Log collected with a proportional controller. P is read from p_term / error.
-LOG = Path("data/fr_turn_pid_ground.csv")
-OUT = Path("plant.json")
+ROOT = Path(__file__).resolve().parent
+CFG = plantid.load_config(ROOT / "config" / "config.yaml", root=ROOT)
 
 
 def main() -> None:
-    if not LOG.is_file():
-        raise SystemExit(f"log not found: {LOG}")
-    frame = pl.read_csv(LOG).sort("time_s")
+    log = CFG.identify.log
+    out = CFG.identify.out
+    if not log.is_file():
+        raise SystemExit(f"log not found: {log}")
+    frame = pl.read_csv(log).sort("time_s")
     time = frame["time_s"].to_numpy()
     setpoint = frame["set_point"].to_numpy()
     measurement = frame["measure_value"].to_numpy()
@@ -27,7 +28,7 @@ def main() -> None:
     best = found.best
     plantid.save(
         best.plant,
-        OUT,
+        out,
         model=best.model.name,
         kp=best.kp,
         rmse=best.rmse,
@@ -37,7 +38,7 @@ def main() -> None:
     print(f"P = {best.kp:g}")
     print(f"G(s) = {best.formula()}")
     print(f"Fc = {best.plant.params['fc']:.4g}   RMSE = {best.rmse:.4g}")
-    print(f"saved {OUT}")
+    print(f"saved {out}")
 
 
 if __name__ == "__main__":

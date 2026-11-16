@@ -102,7 +102,9 @@ def save(system: control.NonlinearIOSystem, path, **meta) -> None:
         "fc": params["fc"],
     }
     payload.update(meta)
-    Path(path).write_text(json.dumps(payload, indent=2) + "\n")
+    destination = Path(path)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination.write_text(json.dumps(payload, indent=2) + "\n")
 
 
 def load(path) -> control.NonlinearIOSystem:
