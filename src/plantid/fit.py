@@ -24,11 +24,6 @@ class FitResult:
     kp: float
 
     @property
-    def system(self) -> control.TransferFunction:
-        """python-control transfer function of the linear part."""
-        return self.plant.linear
-
-    @property
     def gain(self) -> float:
         return float(self.plant.params["gain"])
 

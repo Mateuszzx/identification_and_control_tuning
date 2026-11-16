@@ -64,6 +64,39 @@ class PidTuneTest(unittest.TestCase):
         self.assertLessEqual(tuned.gains.ki, 1.0)
         self.assertEqual(tuned.gains.kp, 2.0)
 
+    def test_ki_is_not_raised_above_the_caller_limit(self):
+        plant = io_system("inertial", gain=1.0, taus=(1.0,), fc=4.0)
+        tuned = pidtune.tune(
+            plant,
+            levels=(0.0, 90.0),
+            hold=1.0,
+            dt=0.015,
+            kp=(10.0,),
+            ki=(0.0, 20.0),
+            kd=(0.0,),
+            encoder_step=None,
+            allow_steady_state_error=False,
+        )
+        self.assertEqual(tuned.gains.ki, 20.0)
+        self.assertEqual(tuned.gains.kp, 10.0)
+
+    def test_powell_prefers_the_gain_that_tracks(self):
+        plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
+        tuned = pidtune.tune(
+            plant,
+            levels=(0.0, 40.0, 0.0),
+            hold=4.0,
+            dt=0.05,
+            kp=(4.0, 10.0),
+            ki=(0.0,),
+            kd=(0.0,),
+            encoder_step=None,
+            allow_steady_state_error=True,
+            method="powell",
+        )
+        self.assertGreater(tuned.gains.kp, 4.5)
+        self.assertEqual(tuned.gains.ki, 0.0)
+
     def test_powell_stays_inside_the_caller_limits(self):
         plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
         tuned = pidtune.tune(

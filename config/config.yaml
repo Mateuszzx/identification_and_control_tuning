@@ -2,7 +2,7 @@
 # Identification reads the log and writes the plant. Tuning reads that plant.
 
 identify:
-  log: data/fr_turn_pid_ground.csv
+  log: data/fr_prop_pid.csv
   out: model/plant.json
 
 tune:
@@ -11,12 +11,12 @@ tune:
   dead_zone: 0.1
   hold: 6.0
   levels: [0, -30, 0, -60, 0, -90, 0, 30, 0, 60, 0, 90, 0]
-  kp: [1.0, 10.0]
-  ki: [0.0, 3.0]
-  kd: [0.0, 0.5]
+  kp: [1.0, 120.0]
+  ki: [0.0, 10.0]
+  kd: [0.0, 1.5]
   we: 1.0
   allow_steady_state_error: false
   # powell or pygad. Both minimize the same simulated ISE.
   method: pygad
-  generations: 40
-  population: 24
+  generations: 400
+  population: 50

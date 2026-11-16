@@ -4,11 +4,9 @@ from pathlib import Path
 
 import control
 import numpy as np
-import polars as pl
 
 from plantid import (
     ENCODER_STEP,
-    LOG_STEPS,
     FirmwarePID,
     Gains,
     Limits,
@@ -18,7 +16,6 @@ from plantid import (
     integrator,
     search,
     simulate,
-    tune,
 )
 from plantid.plant import initial_state, io_system, load, proportional_response, save, step
 
@@ -119,130 +116,29 @@ class FirmwarePidTest(unittest.TestCase):
         clamped.step(10.0, 0.0, 0.015)
         self.assertEqual(clamped.acc, 2.0)
 
-    def test_dead_zone_parameter_blanks_one_count(self):
-        plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
-        tuned = tune(
-            plant,
-            dt=0.05,
-            hold=0.2,
-            levels=(0.0, 30.0),
-            kp=(4.0,),
-            ki=(0.0,),
-            kd=(0.0,),
-            dead_zone=0.2,
-            encoder_step=None,
-            max_overshoot=100.0,
-            max_final_error=30.0,
-        )
-        self.assertEqual(tuned.limits.dead_zone, 0.2)
-        pid = FirmwarePID(Gains(8.0, 10.0, 0.0), tuned.limits)
+    def test_dead_zone_blanks_one_encoder_count(self):
+        pid = FirmwarePID(Gains(8.0, 10.0, 0.0), Limits(dead_zone=0.2))
         self.assertEqual(pid.step(ENCODER_STEP, 0.0, 0.015), 0.0)
         self.assertGreater(abs(pid.step(2 * ENCODER_STEP, 0.0, 0.015)), 0.0)
+
+    def test_simulate_dead_zone_blanks_the_command(self):
+        plant = io_system("integrator", gain=0.8, taus=(), fc=0.0)
+        reference = np.full(5, 10.0)
+        _y, command = simulate(
+            plant,
+            reference,
+            Gains(1.0, 0.0, 0.0),
+            dt=0.05,
+            dead_zone=100.0,
+            encoder_step=None,
+        )
+        self.assertTrue(np.all(command == 0.0))
 
     def test_proportional_loop_stops_at_friction(self):
         plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
         reference = np.full(400, 40.0)
         y, _ = simulate(plant, reference, Gains(1.0, 0.0, 0.0), dt=0.02, encoder_step=None)
         self.assertAlmostEqual(y[-1], 31.0, delta=0.5)
-
-    def test_tune_takes_a_plant_and_scores_every_logged_step(self):
-        plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
-        tuned = tune(
-            plant,
-            dt=0.05,
-            hold=5.0,
-            kp=(1.0,),
-            ki=(0.0, 8.0),
-            kd=(0.0,),
-            encoder_step=None,
-            we=1.0,
-            max_overshoot=200.0,
-            max_final_error=5.0,
-        )
-        self.assertEqual(tuned.fc, plant.params["fc"])
-        self.assertEqual(tuned.gains.kp, 1.0)
-        self.assertEqual(tuned.gains.kd, 0.0)
-        self.assertGreater(tuned.gains.ki, 1.0)
-        self.assertLess(tuned.gains.ki, 8.0)
-        self.assertTrue(tuned.meets_spec)
-        label = f"Kp={tuned.gains.kp:g}, Ki={tuned.gains.ki:g}, Kd={tuned.gains.kd:g}"
-        setpoints = tuned.steps.filter(pl.col("regulator") == label)["setpoint"].to_list()
-        self.assertEqual(setpoints, list(LOG_STEPS))
-        moves = [item for item in setpoints if item != 0.0]
-        self.assertEqual(moves, [-30.0, -60.0, -90.0, 30.0, 60.0, 90.0])
-
-    def test_tune_keeps_the_gain_that_tracks_the_setpoint(self):
-        plant = io_system("integrator", gain=0.8, taus=(), fc=9.0)
-        tuned = tune(
-            plant,
-            dt=0.05,
-            hold=4.0,
-            levels=(0.0, 40.0, 0.0),
-            kp=(4.0, 10.0),
-            ki=(0.0,),
-            kd=(0.0,),
-            encoder_step=None,
-            max_overshoot=100.0,
-            max_final_error=20.0,
-        )
-        self.assertGreater(tuned.gains.kp, 4.5)
-        self.assertEqual(tuned.gains.ki, 0.0)
-
-    def test_tune_rejects_a_lower_ise_that_stops_short_of_the_setpoint(self):
-        plant = io_system("inertial", gain=321.2, taus=(427.0, 0.07, 0.07), fc=10.16)
-        tuned = tune(
-            plant,
-            dt=0.015,
-            hold=6.0,
-            levels=(0.0, 90.0, 0.0),
-            kp=(3.0, 12.0),
-            ki=(0.5, 7.0),
-            kd=(0.0, 0.5),
-            dead_zone=0.1,
-            encoder_step=None,
-            we=1.0,
-            max_overshoot=20.0,
-            max_final_error=0.2,
-        )
-        self.assertGreater(tuned.gains.ki, 5.0)
-        i_max = tuned.limits.anti_windup * tuned.dt * tuned.gains.ki
-        self.assertGreaterEqual(i_max, plant.params["fc"] + 90.0 / plant.params["gain"])
-        worst = max(step.abs_final_deg for step in tuned.score.steps)
-        self.assertLess(worst, 0.2)
-
-    def test_tune_does_not_raise_ki_above_the_caller_limit(self):
-        plant = io_system("inertial", gain=1.0, taus=(1.0,), fc=4.0)
-        tuned = tune(
-            plant,
-            dt=0.015,
-            hold=1.0,
-            levels=(0.0, 90.0),
-            kp=(10.0,),
-            ki=(0.0, 20.0),
-            kd=(0.0,),
-            encoder_step=None,
-            max_overshoot=1000.0,
-            max_final_error=100.0,
-        )
-        self.assertEqual(tuned.gains.ki, 20.0)
-
-    def test_tune_can_leave_a_steady_state_error_when_asked(self):
-        plant = io_system("inertial", gain=321.2, taus=(427.0, 0.07, 0.07), fc=10.16)
-        tuned = tune(
-            plant,
-            dt=0.015,
-            hold=6.0,
-            levels=(0.0, 90.0, 0.0),
-            kp=(3.0, 12.0),
-            ki=(0.5, 7.0),
-            kd=(0.0,),
-            dead_zone=0.1,
-            encoder_step=None,
-            allow_steady_state_error=True,
-            max_overshoot=100.0,
-            max_final_error=0.2,
-        )
-        self.assertLess(tuned.gains.ki, 2.0)
 
 
 if __name__ == "__main__":

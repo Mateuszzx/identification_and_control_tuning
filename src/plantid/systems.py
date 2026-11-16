@@ -9,16 +9,8 @@ import control
 import numpy as np
 
 
-def transfer_function(kind: str, gain: float, taus: tuple[float, ...]) -> control.TransferFunction:
-    """Return ``G(s)`` for an inertial plant or an integrator with lags."""
-    denominator = np.array([1.0, 0.0]) if kind == "integrator" else np.array([1.0])
-    for tau in taus:
-        denominator = np.convolve(denominator, [float(tau), 1.0])
-    return control.tf([float(gain)], denominator)
-
-
 def companion(kind: str, gain: float, taus: tuple[float, ...]):
-    """Phase-variable realization of :func:`transfer_function`.
+    """Phase-variable realization of the linear plant.
 
     Returns the transfer function together with ``A``, ``B`` and ``C`` such
     that ``y = C x`` and ``C = [0 ... 1]``.

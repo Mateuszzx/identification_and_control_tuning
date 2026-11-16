@@ -1,28 +1,19 @@
-"""Plant identification and firmware-PID tuning, with python-control models."""
+"""Plant identification from a closed-loop log, and the firmware PID simulation.
+
+PID search lives in ``pidtune``. This package fits the plant and can simulate
+the controller from ``PID.cpp``. It does not choose the gains.
+"""
 
 from plantid.config import Config, IdentifySetup, TuneSetup, load_config
 from plantid.fit import Fit, FitResult, fit_model, loop_gain, search
 from plantid.plant import io_system, load, save
 from plantid.models import Model, default_models, inertial, integrator
-from plantid.pid import (
-    DT,
-    ENCODER_STEP,
-    LOG_STEPS,
-    FirmwarePID,
-    Gains,
-    Limits,
-    Tuning,
-    ki_that_holds,
-    simulate,
-    steps,
-    tune,
-)
+from plantid.pid import DT, ENCODER_STEP, FirmwarePID, Gains, Limits, ki_that_holds, simulate, steps
 from plantid.systems import closed_loop
 
 __all__ = [
     "DT",
     "ENCODER_STEP",
-    "LOG_STEPS",
     "Config",
     "Fit",
     "FitResult",
@@ -32,7 +23,6 @@ __all__ = [
     "Limits",
     "Model",
     "TuneSetup",
-    "Tuning",
     "closed_loop",
     "default_models",
     "fit_model",
@@ -47,5 +37,4 @@ __all__ = [
     "search",
     "simulate",
     "steps",
-    "tune",
 ]
