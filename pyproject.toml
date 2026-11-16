@@ -1,0 +1,25 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "pid"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "control>=0.10.2",
+    "ipykernel>=7.4.0",
+    "matplotlib>=3.11.2",
+    "numpy>=2.5.5",
+    "polars>=2.1.0",
+    "scipy>=1.18.1",
+    "seaborn>=0.13.2",
+]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/plantid"]
+
+[tool.hatch.build.targets.wheel.sources]
+"src" = ""
