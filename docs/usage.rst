@@ -67,8 +67,8 @@ catalog is inertial plants of order 1–3, with and without Coulomb friction,
 then integrators with 0, 1, and 2 lags and friction. The proportional gain
 is ``median(p_term / error)`` from the log. It is not a fitted parameter.
 
-The lowest RMSE is saved as a python-control plant: a transfer function with
-a Coulomb dead-zone on the input. ``output/identify.png`` shows the measured
+The lowest RMSE is saved as a :class:`plantid.plant.Plant`: a transfer function
+with a Coulomb dead-zone on the input. ``output/identify.png`` shows the measured
 output, the fitted response, and the residual.
 
 Tune

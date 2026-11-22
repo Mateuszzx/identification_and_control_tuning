@@ -4,11 +4,10 @@ The controller itself is not defined here. :func:`simulate` calls
 :func:`pid.controller.make` and :meth:`pid.controller.PID.step`.
 """
 
-import control
 import numpy as np
 
-from pid import ENCODER_STEP, Gains, Limits, integral_rate, make
-from plantid.plant import initial_state, step
+from pid import Gains, Limits, integral_rate, make
+from plantid.plant import Plant
 
 
 class Trajectory(tuple):
@@ -94,30 +93,24 @@ def simulate(
     dt: float,
     limits: Limits | None = None,
     dead_zone: float | None = None,
-    encoder_step: float | None = ENCODER_STEP,
     y0: float = 0.0,
 ) -> Trajectory:
     """Run ``plant`` under the controller from :func:`pid.controller.make`.
 
-    The measurement is quantised to the encoder step before it enters the PID.
-
     Parameters
     ----------
-    plant : control.NonlinearIOSystem
-        Plant from :func:`plantid.io_system`.
+    plant : plantid.plant.Plant
+        Plant to simulate.
     reference : numpy.ndarray
         Sampled setpoint.
     gains : pid.controller.Gains
         PID gains.
     dt : float
-        Sample time in seconds.
+        Sample time in seconds. The config supplies this as ``tune.dt``.
     limits : pid.controller.Limits, optional
         Controller limits. Default is constructed by :func:`pid.controller.make`.
     dead_zone : float, optional
         Passed to :func:`pid.controller.make`.
-    encoder_step : float or None, optional
-        Quantisation step. ``None`` or a non-positive value disables it.
-        Default is :data:`pid.ENCODER_STEP`.
     y0 : float, optional
         Initial plant output. Default is 0.
 
@@ -127,20 +120,19 @@ def simulate(
         Plant output and controller command.
     """
     pid = make(gains, limits=limits, dead_zone=dead_zone)
-    state = initial_state(plant, y0)
+    state = plant.initial_state(y0)
     y_now = float(y0)
     y = np.empty(len(reference))
     u = np.empty(len(reference))
     for i, setpoint in enumerate(reference):
-        measured = _quantise(y_now, encoder_step)
-        command = pid.step(float(setpoint), measured, dt)
-        state, y_now = step(plant, state, command, dt)
+        command = pid.step(float(setpoint), y_now, dt)
+        state, y_now = plant.step(state, command, dt)
         y[i] = y_now
         u[i] = command
     return Trajectory(y, u)
 
 
-def ki_that_holds(plant: control.NonlinearIOSystem, levels, limits: Limits, dt: float) -> float:
+def ki_that_holds(plant: Plant, levels, limits: Limits, dt: float) -> float:
     """Smallest ``Ki`` for which the integrator alone can hold every level.
 
     The holding command is ``Fc + |y| / K`` for an inertial plant and ``Fc``
@@ -148,8 +140,8 @@ def ki_that_holds(plant: control.NonlinearIOSystem, levels, limits: Limits, dt: 
 
     Parameters
     ----------
-    plant : control.NonlinearIOSystem
-        Plant whose ``params`` supply ``kind``, ``gain``, and ``fc``.
+    plant : plantid.plant.Plant
+        Plant whose ``kind``, ``gain``, and ``fc`` set the holding command.
     levels : sequence of float
         Setpoints that must be held.
     limits : pid.controller.Limits
@@ -176,33 +168,13 @@ def ki_that_holds(plant: control.NonlinearIOSystem, levels, limits: Limits, dt: 
     return needed / rate
 
 
-def _quantise(y: float, encoder_step: float | None) -> float:
-    """Round a measurement to the encoder grid.
-
-    Parameters
-    ----------
-    y : float
-        Continuous plant output.
-    encoder_step : float or None
-        Grid size. ``None`` or a non-positive value returns ``y``.
-
-    Returns
-    -------
-    float
-        Quantised measurement.
-    """
-    if encoder_step is None or encoder_step <= 0.0:
-        return float(y)
-    return float(np.round(y / encoder_step) * encoder_step)
-
-
-def _holding_command(plant: control.NonlinearIOSystem, setpoint: float) -> float:
+def _holding_command(plant: Plant, setpoint: float) -> float:
     """Actuator command that keeps ``setpoint`` once the plant has stopped.
 
     Parameters
     ----------
-    plant : control.NonlinearIOSystem
-        Plant whose ``params`` supply ``kind``, ``gain``, and ``fc``.
+    plant : plantid.plant.Plant
+        Plant whose ``kind``, ``gain``, and ``fc`` set the command.
     setpoint : float
         Output to hold.
 
@@ -212,7 +184,6 @@ def _holding_command(plant: control.NonlinearIOSystem, setpoint: float) -> float
         ``Fc + abs(setpoint) / K`` for an inertial plant, and ``Fc`` for an
         integrator or a non-positive gain.
     """
-    fc = float(plant.params["fc"])
-    if plant.params["kind"] == "integrator" or float(plant.params["gain"]) <= 0.0:
-        return fc
-    return fc + abs(float(setpoint)) / float(plant.params["gain"])
+    if plant.kind == "integrator" or plant.gain <= 0.0:
+        return plant.fc
+    return plant.fc + abs(float(setpoint)) / plant.gain

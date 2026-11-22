@@ -10,19 +10,18 @@ import logging
 from dataclasses import dataclass
 from itertools import product
 
-import control
 import numpy as np
 import pygad
 from scipy.optimize import minimize
 
-from pid import DT, ENCODER_STEP, Gains, Limits
+from pid import Gains, Limits
 from pidtune.loop import ki_that_holds, simulate, steps
-from plantid.plant import load
+from plantid.plant import Plant
 
 log = logging.getLogger("pidtune")
 
 
-def load_plant(path) -> control.NonlinearIOSystem:
+def load_plant(path) -> Plant:
     """Read a plant JSON file written by ``identify.py``.
 
     Parameters
@@ -32,10 +31,10 @@ def load_plant(path) -> control.NonlinearIOSystem:
 
     Returns
     -------
-    control.NonlinearIOSystem
-        Plant rebuilt by :func:`plantid.load`.
+    Plant
+        Plant rebuilt by :meth:`plantid.plant.Plant.load`.
     """
-    return load(path)
+    return Plant.load(path)
 
 
 @dataclass(frozen=True)
@@ -80,17 +79,16 @@ class Solution:
 
 
 def tune(
-    plant: control.NonlinearIOSystem,
+    plant: Plant,
     *,
     levels,
     hold: float,
-    dt: float = DT,
+    dt: float,
     kp: tuple[float, float],
     ki: tuple[float, float],
     kd: tuple[float, float] = (0.0, 0.0),
     limits: Limits | None = None,
     dead_zone: float | None = None,
-    encoder_step: float | None = ENCODER_STEP,
     we: float = 1.0,
     allow_steady_state_error: bool = False,
     method: str = "pygad",
@@ -111,23 +109,21 @@ def tune(
 
     Parameters
     ----------
-    plant : control.NonlinearIOSystem
+    plant : plantid.plant.Plant
         Plant to control. It is not identified here.
     levels : sequence of float
         Setpoint waveform, one value per hold.
     hold : float
         Seconds each level is held.
-    dt : float, optional
-        Sample time in seconds. Default is 15 ms.
+    dt : float
+        Sample time in seconds, from ``tune.dt`` in the config.
     kp, ki, kd : tuple of float
         ``(low, high)`` search interval. One number, or equal ends, fixes
         that gain. ``kd`` defaults to ``(0, 0)``.
     limits : pid.controller.Limits, optional
         Controller limits. ``dead_zone`` overrides the dead zone on this object.
     dead_zone : float, optional
-        Firmware dead zone. Overrides ``limits.dead_zone``.
-    encoder_step : float or None, optional
-        Measurement quantisation. ``None`` disables it.
+        Dead zone passed to :func:`pid.controller.make`. Overrides ``limits.dead_zone``.
     we : float, optional
         Weight on the integral of squared error. Default is 1.
     allow_steady_state_error : bool, optional
@@ -189,7 +185,6 @@ def tune(
             dt=dt,
             limits=limits,
             dead_zone=dead_zone,
-            encoder_step=encoder_step,
         )
         ise = float(np.sum(np.square(reference - y)) * dt * we)
         return gains, ise, y, u

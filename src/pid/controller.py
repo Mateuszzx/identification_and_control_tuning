@@ -20,9 +20,6 @@ from dataclasses import dataclass, field, replace
 
 import numpy as np
 
-DT = 15e-3
-ENCODER_STEP = 360.0 / 2048.0
-
 
 @dataclass(frozen=True)
 class Gains:

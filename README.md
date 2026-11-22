@@ -34,7 +34,7 @@ uv run app/identify.py --config config/config.yaml
 
 The same steps are in `notebooks/identify.ipynb`.
 
-lmfit minimizes the output error of each candidate. The catalog is inertial plants of order 1–3, with and without Coulomb friction, and integrators with 0–2 lags and friction. The proportional gain is read from the log as `median(p_term / error)`. It is not fitted. The lowest RMSE is written to `model/plant.json`: a python-control transfer function with a Coulomb dead-zone on the input.
+lmfit minimizes the output error of each candidate. The catalog is inertial plants of order 1–3, with and without Coulomb friction, and integrators with 0–2 lags and friction. The proportional gain is read from the log as `median(p_term / error)`. It is not fitted. The lowest RMSE is written to `model/plant.json`: a `Plant`, a transfer function with a Coulomb dead-zone on the input.
 
 ## Tune
 

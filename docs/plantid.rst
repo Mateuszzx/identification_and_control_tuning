@@ -9,6 +9,10 @@ plantid
    :private-members:
    :special-members: __post_init__
 
+.. automodule:: plantid.log
+   :members:
+   :private-members:
+
 .. automodule:: plantid.models
    :members:
    :private-members:
@@ -21,10 +25,7 @@ plantid
 .. automodule:: plantid.plant
    :members:
    :private-members:
-
-.. automodule:: plantid.systems
-   :members:
-   :private-members:
+   :special-members: __init__
 
 .. automodule:: plantid.plots
    :members:

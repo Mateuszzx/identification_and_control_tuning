@@ -2,30 +2,26 @@
 
 PID search lives in ``pidtune``. The controller lives in ``pid``. This
 package fits the plant and writes it as JSON. It does not choose the gains.
+
+:class:`~plantid.plant.Plant` is the fitted dynamics. :class:`~plantid.log.Log`
+reads the recording and :meth:`~plantid.log.Log.identify` fits
+:meth:`~plantid.models.Model.catalog`.
 """
 
 from plantid.config import Config, IdentifySetup, TuneSetup, load_config
-from plantid.fit import Fit, FitResult, fit_model, loop_gain, search
-from plantid.models import Model, default_models, inertial, integrator
-from plantid.plant import io_system, load, save
-from plantid.systems import closed_loop
+from plantid.fit import Fit, FitResult
+from plantid.log import Log
+from plantid.models import Model
+from plantid.plant import Plant
 
 __all__ = [
     "Config",
     "Fit",
     "FitResult",
     "IdentifySetup",
+    "Log",
     "Model",
+    "Plant",
     "TuneSetup",
-    "closed_loop",
-    "default_models",
-    "fit_model",
-    "inertial",
-    "integrator",
-    "io_system",
-    "load",
     "load_config",
-    "loop_gain",
-    "save",
-    "search",
 ]

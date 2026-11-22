@@ -1,11 +1,10 @@
-"""Identified plant as a python-control system.
+"""Identified plant.
 
 The linear part is a :class:`control.TransferFunction` and the matching
 :class:`control.StateSpace` in phase-variable form, so the last state is the
-output. Coulomb friction is an input dead-zone on a
-:class:`control.NonlinearIOSystem`. Discrete steps use
-:func:`control.sample_system` (zero-order hold), which is what the firmware
-loop does with a held command.
+output. Coulomb friction is an input dead-zone. Discrete steps use
+:func:`control.sample_system` (zero-order hold), which is what a held command
+does.
 """
 
 import json
@@ -14,10 +13,236 @@ from pathlib import Path
 import control
 import numpy as np
 
-from plantid.systems import companion
+
+class Plant:
+    """Linear dynamics with a Coulomb dead-zone on the input.
+
+    Parameters
+    ----------
+    kind : {"inertial", "integrator"}
+        Plant family.
+    gain : float
+        Numerator gain, ``K`` or ``Kv``.
+    taus : tuple of float, optional
+        Real time constants. Default is no extra poles.
+    fc : float, optional
+        Coulomb threshold. Zero disables the dead-zone. Default is 0.
+
+    Attributes
+    ----------
+    kind : str
+        ``"inertial"`` or ``"integrator"``.
+    gain : float
+        Numerator gain.
+    taus : tuple of float
+        Real time constants.
+    fc : float
+        Coulomb threshold.
+    linear : control.TransferFunction
+        Linear plant, without friction.
+    """
+
+    def __init__(
+        self,
+        kind: str,
+        gain: float,
+        taus: tuple[float, ...] = (),
+        fc: float = 0.0,
+    ):
+        """Store the parameters and build the phase-variable realization.
+
+        Raises
+        ------
+        ValueError
+            ``kind`` is not ``"inertial"`` or ``"integrator"``.
+        """
+        if kind not in ("inertial", "integrator"):
+            raise ValueError(f"unknown plant kind {kind!r}")
+        self.kind = kind
+        self.gain = float(gain)
+        self.taus = tuple(float(tau) for tau in taus)
+        self.fc = float(fc)
+        self.linear, self._states = self._realization()
+        self._zoh: dict[float, control.StateSpace] = {}
+
+    @classmethod
+    def load(cls, path) -> "Plant":
+        """Read a plant saved with :meth:`save`.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            JSON file.
+
+        Returns
+        -------
+        Plant
+            Plant rebuilt from ``kind``, ``gain``, ``taus``, and ``fc``.
+
+        Raises
+        ------
+        ValueError
+            ``kind`` is not ``"inertial"`` or ``"integrator"``.
+        """
+        data = json.loads(Path(path).read_text())
+        taus = tuple(float(tau) for tau in data["taus"])
+        return cls(str(data["kind"]), float(data["gain"]), taus, float(data["fc"]))
+
+    def save(self, path, **meta) -> None:
+        """Write the plant parameters as JSON.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            Destination. Parent directories are created.
+        **meta
+            Extra JSON fields stored beside ``kind``, ``gain``, ``taus``, and ``fc``.
+        """
+        payload = {
+            "kind": self.kind,
+            "gain": self.gain,
+            "taus": list(self.taus),
+            "fc": self.fc,
+        }
+        payload.update(meta)
+        destination = Path(path)
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        destination.write_text(json.dumps(payload, indent=2) + "\n")
+
+    def initial_state(self, y0: float) -> np.ndarray:
+        """Rest state whose output is ``y0``.
+
+        The last state is the output. Every other state starts at zero.
+
+        Parameters
+        ----------
+        y0 : float
+            Initial output.
+
+        Returns
+        -------
+        numpy.ndarray
+            State vector.
+        """
+        state = np.zeros(self._states.nstates)
+        if self._states.nstates:
+            state[-1] = y0
+        return state
+
+    def step(self, state: np.ndarray, command: float, dt: float):
+        """Advance one zero-order hold.
+
+        Parameters
+        ----------
+        state : numpy.ndarray
+            State at the beginning of the step.
+        command : float
+            Controller output, before friction.
+        dt : float
+            Step length in seconds. A non-positive value holds the state.
+
+        Returns
+        -------
+        state : numpy.ndarray
+            State at the end of the step.
+        output : float
+            Plant output at the end of the step.
+        """
+        if dt <= 0.0:
+            return state, float(self._states.C @ state)
+        ue = _deadzone(command, self.fc)
+        discrete = self._discrete(dt)
+        nxt = np.asarray(discrete.A @ state + np.asarray(discrete.B).reshape(-1) * ue).reshape(-1)
+        return nxt, float(np.asarray(discrete.C @ nxt).reshape(-1)[0])
+
+    def proportional_response(
+        self,
+        time: np.ndarray,
+        setpoint: np.ndarray,
+        kp: float,
+        y0: float,
+    ) -> np.ndarray:
+        """Closed loop ``u = kp (r - y)`` sampled on ``time``.
+
+        Parameters
+        ----------
+        time : numpy.ndarray
+            Sample times. The interval between samples is the hold time.
+        setpoint : numpy.ndarray
+            Reference, the same length as ``time``.
+        kp : float
+            Proportional gain.
+        y0 : float
+            Output at ``time[0]``.
+
+        Returns
+        -------
+        numpy.ndarray
+            Simulated output, the same length as ``time``.
+        """
+        state = self.initial_state(y0)
+        out = np.empty(len(time))
+        out[0] = y0
+        for i in range(len(time) - 1):
+            command = kp * (setpoint[i] - out[i])
+            state, out[i + 1] = self.step(state, command, time[i + 1] - time[i])
+        return out
+
+    def closed_loop(self, kp: float) -> control.TransferFunction:
+        """Linear loop ``Kp G / (1 + Kp G)``.
+
+        Friction is not part of this system.
+
+        Parameters
+        ----------
+        kp : float
+            Proportional gain wrapped around the plant.
+
+        Returns
+        -------
+        control.TransferFunction
+            Unity-feedback closed loop.
+        """
+        return control.feedback(kp * self.linear, 1)
+
+    def _realization(self):
+        """Phase-variable state space of the linear plant.
+
+        The output is the last state, so ``C = [0 ... 1]``.
+
+        Returns
+        -------
+        linear : control.TransferFunction
+            Same transfer function as the state space.
+        states : control.StateSpace
+            Phase-variable realization whose last state is the output.
+        """
+        system, a, b, c = _companion(self.kind, self.gain, self.taus)
+        states = control.ss(a, b.reshape(-1, 1), c.reshape(1, -1), 0)
+        return system, states
+
+    def _discrete(self, dt: float) -> control.StateSpace:
+        """Zero-order-hold discretization, cached on this plant.
+
+        Parameters
+        ----------
+        dt : float
+            Sample time in seconds. The cache key is ``dt`` rounded to 6 decimals.
+
+        Returns
+        -------
+        control.StateSpace
+            Discrete linear plant. Friction is applied outside this system.
+        """
+        key = round(float(dt), 6)
+        hit = self._zoh.get(key)
+        if hit is None:
+            hit = control.sample_system(self._states, key)
+            self._zoh[key] = hit
+        return hit
 
 
-def deadzone(command: float, fc: float) -> float:
+def _deadzone(command: float, fc: float) -> float:
     """Coulomb dead-zone.
 
     Parameters
@@ -37,281 +262,42 @@ def deadzone(command: float, fc: float) -> float:
     return float(np.sign(command) * max(abs(command) - fc, 0.0))
 
 
-def io_system(
-    kind: str, gain: float, taus: tuple[float, ...], fc: float
-) -> control.NonlinearIOSystem:
-    """Continuous plant: linear dynamics with a Coulomb dead-zone on the input.
+def _companion(kind: str, gain: float, taus: tuple[float, ...]):
+    """Phase-variable matrices of the linear plant.
 
     Parameters
     ----------
     kind : {"inertial", "integrator"}
-        Plant family.
+        ``"integrator"`` adds a free pole at the origin.
     gain : float
-        Numerator gain.
+        Numerator gain, ``K`` or ``Kv``.
     taus : tuple of float
-        Real time constants, longest first after identification.
-    fc : float
-        Coulomb threshold. Zero disables the dead-zone.
+        Extra real time constants. Each contributes a factor ``(tau s + 1)``.
 
     Returns
     -------
-    control.NonlinearIOSystem
-        Plant whose ``params`` hold ``A``, ``B``, ``C``, ``fc``, ``kind``,
-        ``gain``, and ``taus``. ``linear`` is the transfer function and
-        ``linear_ss`` is the phase-variable state space.
+    system : control.TransferFunction
+        Linear plant ``G(s)``.
+    a : numpy.ndarray
+        State matrix of shape ``(n, n)``.
+    b : numpy.ndarray
+        Input vector of shape ``(n,)``.
+    c : numpy.ndarray
+        Output row of shape ``(n,)``, with ``c[-1] == 1``.
     """
-    linear, states = _realization(kind, gain, taus)
-    params = {
-        "A": states.A,
-        "B": np.asarray(states.B).reshape(-1),
-        "C": np.asarray(states.C).reshape(-1),
-        "fc": float(fc),
-        "kind": kind,
-        "gain": float(gain),
-        "taus": tuple(float(tau) for tau in taus),
-    }
-
-    def update(_t, x, u, params):
-        """Continuous state derivative with the input dead-zone applied.
-
-        Parameters
-        ----------
-        _t : float
-            Unused time.
-        x : numpy.ndarray
-            Current state.
-        u : array_like
-            Actuator command, before friction.
-        params : dict
-            System parameters. ``fc`` is the Coulomb threshold.
-
-        Returns
-        -------
-        numpy.ndarray
-            ``A x + B * deadzone(u, fc)``.
-        """
-        ue = deadzone(float(np.asarray(u).reshape(-1)[0]), params["fc"])
-        return params["A"] @ x + params["B"] * ue
-
-    def output(_t, x, _u, params):
-        """Plant output, the last state.
-
-        Parameters
-        ----------
-        _t : float
-            Unused time.
-        x : numpy.ndarray
-            Current state.
-        _u : array_like
-            Unused input.
-        params : dict
-            System parameters. ``C`` selects the output.
-
-        Returns
-        -------
-        numpy.ndarray
-            ``C x`` as a length-1 vector.
-        """
-        return np.atleast_1d(params["C"] @ x)
-
-    system = control.nlsys(
-        update,
-        output,
-        inputs=1,
-        outputs=1,
-        states=states.nstates,
-        params=params,
-    )
-    system.linear = linear
-    system.linear_ss = states
-    return system
-
-
-def initial_state(system: control.NonlinearIOSystem, y0: float) -> np.ndarray:
-    """Rest state whose output is ``y0``.
-
-    The last state is the output. Every other state starts at zero.
-
-    Parameters
-    ----------
-    system : control.NonlinearIOSystem
-        Plant from :func:`io_system`.
-    y0 : float
-        Initial output.
-
-    Returns
-    -------
-    numpy.ndarray
-        State vector of length ``system.nstates``.
-    """
-    state = np.zeros(system.nstates)
-    if system.nstates:
-        state[-1] = y0
-    return state
-
-
-def step(system: control.NonlinearIOSystem, state: np.ndarray, command: float, dt: float):
-    """Advance one zero-order hold.
-
-    Parameters
-    ----------
-    system : control.NonlinearIOSystem
-        Plant from :func:`io_system`.
-    state : numpy.ndarray
-        State at the beginning of the step.
-    command : float
-        Controller output, before friction.
-    dt : float
-        Step length in seconds. A non-positive value holds the state.
-
-    Returns
-    -------
-    state : numpy.ndarray
-        State at the end of the step.
-    output : float
-        Plant output at the end of the step.
-    """
-    if dt <= 0.0:
-        return state, float(system.params["C"] @ state)
-    ue = deadzone(command, system.params["fc"])
-    discrete = _discrete(system, dt)
-    nxt = np.asarray(discrete.A @ state + np.asarray(discrete.B).reshape(-1) * ue).reshape(-1)
-    return nxt, float(np.asarray(discrete.C @ nxt).reshape(-1)[0])
-
-
-def proportional_response(
-    system: control.NonlinearIOSystem,
-    time: np.ndarray,
-    setpoint: np.ndarray,
-    kp: float,
-    y0: float,
-) -> np.ndarray:
-    """Closed loop ``u = kp (r - y)`` sampled on ``time``.
-
-    Parameters
-    ----------
-    system : control.NonlinearIOSystem
-        Plant from :func:`io_system`.
-    time : numpy.ndarray
-        Sample times. The interval between samples is the hold time.
-    setpoint : numpy.ndarray
-        Reference, the same length as ``time``.
-    kp : float
-        Proportional gain.
-    y0 : float
-        Output at ``time[0]``.
-
-    Returns
-    -------
-    numpy.ndarray
-        Simulated output, the same length as ``time``.
-    """
-    state = initial_state(system, y0)
-    out = np.empty(len(time))
-    out[0] = y0
-    for i in range(len(time) - 1):
-        command = kp * (setpoint[i] - out[i])
-        state, out[i + 1] = step(system, state, command, time[i + 1] - time[i])
-    return out
-
-
-def save(system: control.NonlinearIOSystem, path, **meta) -> None:
-    """Write the plant parameters as JSON.
-
-    Parameters
-    ----------
-    system : control.NonlinearIOSystem
-        Plant from :func:`io_system`.
-    path : str or pathlib.Path
-        Destination. Parent directories are created.
-    **meta
-        Extra JSON fields stored beside ``kind``, ``gain``, ``taus``, and ``fc``.
-    """
-    params = system.params
-    payload = {
-        "kind": params["kind"],
-        "gain": params["gain"],
-        "taus": list(params["taus"]),
-        "fc": params["fc"],
-    }
-    payload.update(meta)
-    destination = Path(path)
-    destination.parent.mkdir(parents=True, exist_ok=True)
-    destination.write_text(json.dumps(payload, indent=2) + "\n")
-
-
-def load(path) -> control.NonlinearIOSystem:
-    """Read a plant saved with :func:`save`.
-
-    Parameters
-    ----------
-    path : str or pathlib.Path
-        JSON file.
-
-    Returns
-    -------
-    control.NonlinearIOSystem
-        Plant rebuilt from ``kind``, ``gain``, ``taus``, and ``fc``.
-
-    Raises
-    ------
-    ValueError
-        ``kind`` is not ``"inertial"`` or ``"integrator"``.
-    """
-    data = json.loads(Path(path).read_text())
-    kind = str(data["kind"])
-    if kind not in ("inertial", "integrator"):
-        raise ValueError(f"unknown plant kind {kind!r}")
-    taus = tuple(float(tau) for tau in data["taus"])
-    return io_system(kind, float(data["gain"]), taus, float(data["fc"]))
-
-
-def _realization(kind: str, gain: float, taus: tuple[float, ...]):
-    """Phase-variable state space of the linear plant.
-
-    Parameters
-    ----------
-    kind : {"inertial", "integrator"}
-        Plant family.
-    gain : float
-        Numerator gain.
-    taus : tuple of float
-        Real time constants.
-
-    Returns
-    -------
-    linear : control.TransferFunction
-        Same transfer function as the state space.
-    states : control.StateSpace
-        Phase-variable realization whose last state is the output.
-    """
-    linear, a, b, c = companion(kind, gain, taus)
-    states = control.ss(a, b.reshape(-1, 1), c.reshape(1, -1), 0)
-    return linear, states
-
-
-def _discrete(system: control.NonlinearIOSystem, dt: float) -> control.StateSpace:
-    """Zero-order-hold discretization, cached on ``system._zoh``.
-
-    Parameters
-    ----------
-    system : control.NonlinearIOSystem
-        Plant whose ``linear_ss`` attribute is sampled.
-    dt : float
-        Sample time in seconds. The cache key is ``dt`` rounded to 6 decimals.
-
-    Returns
-    -------
-    control.StateSpace
-        Discrete linear plant. Friction is applied outside this system.
-    """
-    key = round(float(dt), 6)
-    cache = getattr(system, "_zoh", None)
-    if cache is None:
-        cache = {}
-        system._zoh = cache
-    hit = cache.get(key)
-    if hit is None:
-        hit = control.sample_system(system.linear_ss, key)
-        cache[key] = hit
-    return hit
+    denominator = np.array([1.0, 0.0]) if kind == "integrator" else np.array([1.0])
+    for tau in taus:
+        denominator = np.convolve(denominator, [float(tau), 1.0])
+    lead = float(denominator[0])
+    coeff = denominator[1:] / lead
+    n = coeff.size
+    a = np.zeros((n, n))
+    a[0, :] = -coeff
+    if n > 1:
+        a[1:, :-1] = np.eye(n - 1)
+    b = np.zeros(n)
+    b[0] = float(gain) / lead
+    c = np.zeros(n)
+    c[-1] = 1.0
+    system = control.tf([float(gain)], denominator)
+    return system, a, b, c

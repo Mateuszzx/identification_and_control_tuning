@@ -14,7 +14,7 @@ match your controller.
    usage
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 1
    :caption: API
 
    pid
