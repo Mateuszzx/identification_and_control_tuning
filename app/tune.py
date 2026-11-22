@@ -1,7 +1,7 @@
 """Tune the PID in :mod:`pid` for a plant saved by identify.py.
 
 The config defaults to ``config/config.yaml`` and can be overridden with
-``--config``. ``method`` selects Powell or PyGAD. The figure is written to
+``--config``. ``method`` selects Powell, PyGAD, or particle swarm. The figure is written to
 ``output/tune.png``. This script does not identify the plant.
 """
 
@@ -63,6 +63,12 @@ def main(argv: list[str] | None = None) -> None:
         mutation=cfg.mutation,
         mutation_by_replacement=cfg.mutation_by_replacement,
         elitism=cfg.elitism,
+        inertia=cfg.inertia,
+        cognitive=cfg.cognitive,
+        social=cfg.social,
+        maxfev=cfg.maxfev,
+        xtol=cfg.xtol,
+        ftol=cfg.ftol,
         seed=cfg.seed,
     )
     print(tuned)

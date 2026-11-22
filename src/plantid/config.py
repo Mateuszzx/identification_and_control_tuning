@@ -1,5 +1,6 @@
 """Read ``config/config.yaml`` for identification and PID tuning."""
 
+import math
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -52,11 +53,11 @@ class TuneSetup:
     we : float
         Weight on the integral of squared setpoint error.
     method : str
-        ``"powell"`` or ``"pygad"``.
+        ``"powell"``, ``"pygad"``, or ``"pso"``.
     generations : int
-        Generations used by PyGAD.
+        PyGAD generations, or particle-swarm iterations.
     population : int
-        Population size used by PyGAD.
+        PyGAD population, or particle-swarm size.
     parents : int
         Parents mated in each PyGAD generation.
     selection : str
@@ -72,7 +73,19 @@ class TuneSetup:
     elitism : int
         Best solutions copied unchanged into the next generation.
     seed : int or None
-        PyGAD seed. ``None`` leaves the generator unseeded.
+        PyGAD and particle-swarm seed. ``None`` leaves the generator unseeded.
+    inertia : float
+        Particle-swarm velocity weight.
+    cognitive : float
+        Pull toward each particle's own best position.
+    social : float
+        Pull toward the swarm's best position.
+    maxfev : int
+        Function evaluations allowed after Powell's starting points.
+    xtol : float
+        Powell step tolerance.
+    ftol : float
+        Powell cost tolerance.
     """
 
     plant: Path
@@ -93,6 +106,12 @@ class TuneSetup:
     mutation_by_replacement: bool
     elitism: int
     seed: int | None
+    inertia: float
+    cognitive: float
+    social: float
+    maxfev: int
+    xtol: float
+    ftol: float
 
 
 @dataclass(frozen=True)
@@ -181,7 +200,7 @@ def load_config(path, *, root=None) -> Config:
     ------
     ValueError
         The file is not a mapping, a required section is missing, a gain
-        bound is malformed, or ``method`` is not ``powell`` or ``pygad``.
+        bound is malformed, or ``method`` is not ``powell``, ``pygad``, or ``pso``.
     """
     path = Path(path)
     base = Path(root) if root is not None else path.parent
@@ -261,7 +280,7 @@ def _tune(section: dict, root: Path) -> TuneSetup:
     -------
     TuneSetup
         Waveform, limits, and search settings. A missing ``method`` becomes
-        ``"pygad"``. Missing PyGAD entries use the shipped defaults.
+        ``"pygad"``. Missing PyGAD and particle-swarm entries use the shipped defaults.
     """
     population = int(section["population"])
     return TuneSetup(
@@ -290,6 +309,12 @@ def _tune(section: dict, root: Path) -> TuneSetup:
             "elitism",
         ),
         seed=_seed(section.get("seed", 1)),
+        inertia=_coefficient(section.get("inertia", 0.7), "inertia"),
+        cognitive=_coefficient(section.get("cognitive", 1.5), "cognitive"),
+        social=_coefficient(section.get("social", 1.5), "social"),
+        maxfev=_positive_int(section.get("maxfev", 40), "maxfev"),
+        xtol=_positive_float(section.get("xtol", 1e-3), "xtol"),
+        ftol=_positive_float(section.get("ftol", 1e-3), "ftol"),
     )
 
 
@@ -327,22 +352,78 @@ def _method(value) -> str:
     Returns
     -------
     str
-        ``"powell"`` or ``"pygad"``.
+        ``"powell"``, ``"pygad"``, or ``"pso"``.
 
     Raises
     ------
     ValueError
-        ``value`` is not one of those two names.
+        ``value`` is not one of those names.
     """
     name = str(value).strip().lower()
-    if name not in ("powell", "pygad"):
-        raise ValueError(f"tune method must be 'powell' or 'pygad', got {value!r}")
+    if name not in ("powell", "pygad", "pso"):
+        raise ValueError(f"tune method must be 'powell', 'pygad', or 'pso', got {value!r}")
     return name
 
 
 _SELECTION = ("sss", "rws", "sus", "rank", "random", "tournament")
 _CROSSOVER = ("single_point", "two_points", "uniform", "scattered")
 _MUTATION = ("random", "swap", "inversion", "scramble")
+
+
+def _coefficient(value, name: str) -> float:
+    """Return a finite particle-swarm coefficient at least 0.
+
+    Parameters
+    ----------
+    value : float
+        Coefficient from the config.
+    name : str
+        Entry name, used in the error message.
+
+    Returns
+    -------
+    float
+        ``value`` as a float.
+
+    Raises
+    ------
+    ValueError
+        ``value`` is not a finite number, or it is negative.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a finite number >= 0, got {value!r}")
+    number = float(value)
+    if not math.isfinite(number) or number < 0.0:
+        raise ValueError(f"{name} must be a finite number >= 0, got {value!r}")
+    return number
+
+
+def _positive_float(value, name: str) -> float:
+    """Return a finite tolerance greater than zero.
+
+    Parameters
+    ----------
+    value : float
+        Tolerance from the config.
+    name : str
+        Entry name, used in the error message.
+
+    Returns
+    -------
+    float
+        ``value`` as a float.
+
+    Raises
+    ------
+    ValueError
+        ``value`` is not a finite number greater than zero.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{name} must be a finite number > 0, got {value!r}")
+    number = float(value)
+    if not math.isfinite(number) or number <= 0.0:
+        raise ValueError(f"{name} must be a finite number > 0, got {value!r}")
+    return number
 
 
 def _positive_int(value, name: str, *, minimum: int = 1) -> int:

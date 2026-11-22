@@ -20,7 +20,7 @@ Edit `config/config.yaml`. Paths there are relative to the repository root.
 
 `tune` sets the plant path, the sample time, the setpoint levels, how long each level is held, and the `Kp`, `Ki`, `Kd` limits. A single number fixes that gain. `we` weights the integral of squared setpoint error. Dead zone and accumulator are edited in `src/pid/controller.py`.
 
-`method` is `powell` or `pygad`. Both minimize that same simulated error and stay inside the limits you set. `generations`, `population`, `parents`, `selection`, `crossover`, `mutation`, `elitism`, and `seed` apply to `pygad`. Powell ignores them.
+`method` is `powell`, `pygad`, or `pso`. All three minimize that same simulated error and stay inside the limits you set. `generations` and `population` are the PyGAD generation count and population, and the particle swarm's iteration count and swarm size. `parents`, `selection`, `crossover`, `mutation`, and `elitism` apply to `pygad`. `inertia`, `cognitive`, and `social` apply to `pso`. `seed` applies to both `pygad` and `pso`. `maxfev`, `xtol`, and `ftol` apply to `powell`.
 
 ## Identify
 

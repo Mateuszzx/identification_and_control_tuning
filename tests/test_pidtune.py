@@ -89,6 +89,28 @@ class PidTuneTest(unittest.TestCase):
         self.assertLessEqual(tuned.gains.ki, 8.0)
         self.assertEqual(tuned.gains.kd, 0.0)
 
+    def test_particle_swarm_stays_inside_the_caller_limits(self):
+        plant = Plant("integrator", gain=0.8, taus=())
+        tuned = pidtune.tune(
+            plant,
+            levels=(0.0, 20.0, 0.0),
+            hold=1.0,
+            dt=0.05,
+            kp=(1.0, 4.0),
+            ki=(0.0, 8.0),
+            kd=(0.0,),
+            method="pso",
+            generations=2,
+            population=4,
+            seed=1,
+        )
+        self.assertGreaterEqual(tuned.gains.kp, 1.0)
+        self.assertLessEqual(tuned.gains.kp, 4.0)
+        self.assertGreaterEqual(tuned.gains.ki, 0.0)
+        self.assertLessEqual(tuned.gains.ki, 8.0)
+        self.assertEqual(tuned.gains.kd, 0.0)
+        self.assertGreater(tuned.ise, 0.0)
+
     def test_unknown_method_is_rejected(self):
         plant = Plant("integrator", gain=0.8, taus=())
         with self.assertRaises(ValueError):

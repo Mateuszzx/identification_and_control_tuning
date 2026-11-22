@@ -23,6 +23,12 @@ class ConfigTest(unittest.TestCase):
         self.assertTrue(cfg.tune.mutation_by_replacement)
         self.assertEqual(cfg.tune.elitism, 1)
         self.assertEqual(cfg.tune.seed, 1)
+        self.assertEqual(cfg.tune.inertia, 0.7)
+        self.assertEqual(cfg.tune.cognitive, 1.5)
+        self.assertEqual(cfg.tune.social, 1.5)
+        self.assertEqual(cfg.tune.maxfev, 40)
+        self.assertEqual(cfg.tune.xtol, 1e-3)
+        self.assertEqual(cfg.tune.ftol, 1e-3)
 
     def test_relative_paths_and_a_fixed_gain(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -58,6 +64,12 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(cfg.tune.method, "pygad")
         self.assertEqual(cfg.tune.parents, 2)
         self.assertEqual(cfg.tune.selection, "sss")
+        self.assertEqual(cfg.tune.inertia, 0.7)
+        self.assertEqual(cfg.tune.cognitive, 1.5)
+        self.assertEqual(cfg.tune.social, 1.5)
+        self.assertEqual(cfg.tune.maxfev, 40)
+        self.assertEqual(cfg.tune.xtol, 1e-3)
+        self.assertEqual(cfg.tune.ftol, 1e-3)
         self.assertEqual(cfg.tune.levels, (0.0, 90.0, 0.0))
 
     def test_unknown_method_is_rejected(self):

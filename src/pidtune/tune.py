@@ -2,8 +2,9 @@
 
 ``method`` selects the search. ``powell`` is a local bound-constrained search
 started from the low, middle, and high end of each free gain. ``pygad`` is a
-genetic search of the same box. Both score a candidate by the integral of
-squared setpoint error from a simulation of :meth:`pid.controller.PID.step`.
+genetic search of the same box. ``pso`` is a global-best particle swarm of
+that box. All three score a candidate by the integral of squared setpoint
+error from a simulation of :meth:`pid.controller.PID.step`.
 """
 
 import logging
@@ -99,15 +100,22 @@ def tune(
     mutation: str = "random",
     mutation_by_replacement: bool = True,
     elitism: int = 1,
+    inertia: float = 0.7,
+    cognitive: float = 1.5,
+    social: float = 1.5,
+    maxfev: int = 40,
+    xtol: float = 1e-3,
+    ftol: float = 1e-3,
     seed: int | None = 1,
 ) -> Solution:
     """Search ``kp``, ``ki``, and ``kd``.
 
-    Each value in ``levels`` is held for ``hold`` seconds. ``powell`` and
-    ``pygad`` minimize the same simulated ISE and stay inside the caller's
-    gain limits. An interactive terminal shows Powell evaluations or PyGAD
-    generations. The bar stays hidden when stderr is not a terminal. Dead
-    zone and accumulator live in :mod:`pid` and are not part of this search.
+    Each value in ``levels`` is held for ``hold`` seconds. ``powell``,
+    ``pygad``, and ``pso`` minimize the same simulated ISE and stay inside
+    the caller's gain limits. An interactive terminal shows Powell
+    evaluations, PyGAD generations, or particle-swarm iterations. The bar
+    stays hidden when stderr is not a terminal. Dead zone and accumulator
+    live in :mod:`pid` and are not part of this search.
 
     Parameters
     ----------
@@ -126,12 +134,14 @@ def tune(
         Controller limits from :class:`pid.controller.Limits`. Default is that class.
     we : float, optional
         Weight on the integral of squared error. Default is 1.
-    method : {"powell", "pygad"}, optional
+    method : {"powell", "pygad", "pso"}, optional
         Search algorithm. Default is ``"pygad"``.
     generations : int, optional
-        PyGAD generations. Ignored by Powell. Default is 40.
+        PyGAD generations, or particle-swarm iterations. Ignored by Powell.
+        Default is 40.
     population : int, optional
-        PyGAD population. Ignored by Powell. Default is 24.
+        PyGAD population, or particle-swarm size. Ignored by Powell.
+        Default is 24.
     parents : int or None, optional
         Parents mated each generation. ``None`` uses one third of
         ``population``, at least 2. Ignored by Powell.
@@ -146,9 +156,27 @@ def tune(
         Powell. Default is true.
     elitism : int, optional
         Best solutions copied unchanged into the next generation. Ignored by
-        Powell. Default is 1.
+        Powell and the particle swarm. Default is 1.
+    inertia : float, optional
+        Particle-swarm velocity weight. Ignored by Powell and PyGAD.
+        Default is 0.7.
+    cognitive : float, optional
+        Pull toward each particle's own best position. Ignored by Powell and
+        PyGAD. Default is 1.5.
+    social : float, optional
+        Pull toward the swarm's best position. Ignored by Powell and PyGAD.
+        Default is 1.5.
+    maxfev : int, optional
+        Function evaluations allowed after Powell's starting points. Ignored
+        by PyGAD and the particle swarm. Default is 40.
+    xtol : float, optional
+        Powell step tolerance. Ignored by PyGAD and the particle swarm.
+        Default is ``1e-3``.
+    ftol : float, optional
+        Powell cost tolerance. Ignored by PyGAD and the particle swarm.
+        Default is ``1e-3``.
     seed : int or None, optional
-        PyGAD seed. Ignored by Powell. Default is 1.
+        PyGAD and particle-swarm seed. Ignored by Powell. Default is 1.
 
     Returns
     -------
@@ -158,7 +186,7 @@ def tune(
     Raises
     ------
     ValueError
-        ``method`` is not ``"powell"`` or ``"pygad"``.
+        ``method`` is not ``"powell"``, ``"pygad"``, or ``"pso"``.
     """
     method = _method(method)
     if limits is None:
@@ -197,7 +225,19 @@ def tune(
         return Solution(gains, ise, reference, response, output)
 
     if method == "powell":
-        return _powell(score, spans, reference)
+        return _powell(score, spans, reference, maxfev, xtol, ftol)
+    if method == "pso":
+        return _pso(
+            score,
+            spans,
+            reference,
+            generations,
+            population,
+            inertia,
+            cognitive,
+            social,
+            seed,
+        )
     return _pygad(
         score,
         spans,
@@ -225,20 +265,20 @@ def _method(value) -> str:
     Returns
     -------
     str
-        ``"powell"`` or ``"pygad"``.
+        ``"powell"``, ``"pygad"``, or ``"pso"``.
 
     Raises
     ------
     ValueError
-        ``value`` is not one of those two names.
+        ``value`` is not one of those names.
     """
     name = str(value).strip().lower()
-    if name not in ("powell", "pygad"):
-        raise ValueError(f"tune method must be 'powell' or 'pygad', got {value!r}")
+    if name not in ("powell", "pygad", "pso"):
+        raise ValueError(f"tune method must be 'powell', 'pygad', or 'pso', got {value!r}")
     return name
 
 
-def _powell(score, spans, reference) -> Solution:
+def _powell(score, spans, reference, maxfev: int, xtol: float, ftol: float) -> Solution:
     """Powell from the low, middle, and high end of every free gain.
 
     The returned point is the visited candidate with the smallest ISE. Powell's
@@ -252,19 +292,35 @@ def _powell(score, spans, reference) -> Solution:
         ``kp``, ``ki``, and ``kd`` intervals.
     reference : numpy.ndarray
         Setpoint stored on the returned solution.
+    maxfev : int
+        Function evaluations allowed after the starting points.
+    xtol : float
+        Step tolerance. Must be finite and greater than zero.
+    ftol : float
+        Cost tolerance. Must be finite and greater than zero.
 
     Returns
     -------
     Solution
         Visited candidate with the smallest ISE.
+
+    Raises
+    ------
+    ValueError
+        ``maxfev`` is below 1, or a tolerance is not a finite number greater
+        than zero.
     """
+    if isinstance(maxfev, bool) or not isinstance(maxfev, int) or maxfev < 1:
+        raise ValueError(f"maxfev must be an integer >= 1, got {maxfev!r}")
+    for name, tolerance in (("xtol", xtol), ("ftol", ftol)):
+        if isinstance(tolerance, bool) or not np.isfinite(tolerance) or float(tolerance) <= 0.0:
+            raise ValueError(f"{name} must be a finite number > 0, got {tolerance!r}")
     names = ("kp", "ki", "kd")
     free = [name for name in names if spans[name][1] - spans[name][0] > 1e-12]
     fixed = {name: spans[name][0] for name in names if name not in free}
     bounds = [spans[name] for name in free]
     visited: list[tuple[Gains, float, np.ndarray, np.ndarray]] = []
     starts = _box_starts(bounds)
-    maxfev = 40
     bar = tqdm(total=len(starts) + maxfev, desc="tune", unit="eval", disable=None)
     best_ise = float("inf")
 
@@ -298,11 +354,112 @@ def _powell(score, spans, reference) -> Solution:
             best_start,
             method="Powell",
             bounds=bounds,
-            options={"maxfev": maxfev, "xtol": 1e-3, "ftol": 1e-3},
+            options={"maxfev": maxfev, "xtol": float(xtol), "ftol": float(ftol)},
         )
     finally:
         bar.close()
     gains, ise, response, output = min(visited, key=lambda item: item[1])
+    return Solution(gains, ise, reference, response, output)
+
+
+def _pso(
+    score,
+    spans,
+    reference,
+    iterations: int,
+    swarm: int,
+    inertia: float,
+    cognitive: float,
+    social: float,
+    seed: int | None,
+) -> Solution:
+    """Global-best particle swarm of the same box scored by ``score``.
+
+    Each iteration moves every particle toward its own best position and the
+    swarm's best position, then clips the result to the gain limits. A fixed
+    gain keeps velocity zero.
+
+    Parameters
+    ----------
+    score : callable
+        ``score(genes) -> (gains, ise, response, output)``.
+    spans : dict of str to tuple of float
+        ``kp``, ``ki``, and ``kd`` intervals.
+    reference : numpy.ndarray
+        Setpoint stored on the returned solution.
+    iterations : int
+        Number of swarm updates. Each update scores every particle.
+    swarm : int
+        Number of particles.
+    inertia, cognitive, social : float
+        Velocity weight, pull toward a particle's own best, and pull toward
+        the swarm best. Each must be finite and at least 0.
+    seed : int or None
+        Seed for the initial positions and the random pulls.
+
+    Returns
+    -------
+    Solution
+        Best particle visited, rescored by the last accepted simulation.
+
+    Raises
+    ------
+    ValueError
+        ``iterations`` or ``swarm`` is below 1, or a coefficient is not a
+        finite number at least 0.
+    """
+    order = ("kp", "ki", "kd")
+    low = np.array([spans[name][0] for name in order], dtype=float)
+    high = np.array([spans[name][1] for name in order], dtype=float)
+    width = high - low
+    free = width > 1e-12
+    if iterations < 1 or swarm < 1:
+        raise ValueError("particle swarm needs a positive iteration count and swarm size")
+    weights = {
+        "inertia": inertia,
+        "cognitive": cognitive,
+        "social": social,
+    }
+    for name, weight in weights.items():
+        if isinstance(weight, bool) or not np.isfinite(weight) or float(weight) < 0.0:
+            raise ValueError(f"{name} must be a finite number >= 0, got {weight!r}")
+    rng = np.random.default_rng(seed)
+    position = rng.uniform(low, high, size=(swarm, 3))
+    position[:, ~free] = low[~free]
+    velocity = rng.uniform(-1.0, 1.0, size=(swarm, 3)) * width
+    velocity[:, ~free] = 0.0
+    personal = position.copy()
+    personal_ise = np.full(swarm, np.inf)
+    best_ise = np.inf
+    best = None
+    bar = tqdm(total=iterations, desc="tune", unit="iter", disable=None)
+    try:
+        for step in range(iterations):
+            for index in range(swarm):
+                gains, ise, response, output = score(position[index])
+                if ise < personal_ise[index]:
+                    personal_ise[index] = ise
+                    personal[index] = position[index]
+                if ise < best_ise:
+                    best_ise = ise
+                    best = (gains, ise, response, output)
+            bar.update(1)
+            bar.set_postfix(ise=f"{best_ise:.4g}")
+            if step == iterations - 1:
+                break
+            global_pos = personal[int(np.argmin(personal_ise))]
+            velocity = (
+                float(inertia) * velocity
+                + float(cognitive) * rng.random((swarm, 3)) * (personal - position)
+                + float(social) * rng.random((swarm, 3)) * (global_pos - position)
+            )
+            np.clip(velocity, -width, width, out=velocity)
+            velocity[:, ~free] = 0.0
+            position = np.clip(position + velocity, low, high)
+            position[:, ~free] = low[~free]
+    finally:
+        bar.close()
+    gains, ise, response, output = best
     return Solution(gains, ise, reference, response, output)
 
 

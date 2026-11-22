@@ -27,9 +27,10 @@ tune:
   # Weighted integral of squared setpoint error.
   we: 1.0
 
-  # powell or pygad. Both minimize the same simulated ISE.
+  # powell, pygad, or pso. All three minimize the same simulated ISE.
   method: pygad
-  # PyGAD only. Powell ignores these. Omit parents to use one third of population.
+  # generations and population are shared by PyGAD and the particle swarm.
+  # Powell ignores them. The other PyGAD entries are ignored by pso.
   generations: 400
   population: 50
   parents: 16
@@ -39,3 +40,11 @@ tune:
   mutation_by_replacement: true
   elitism: 1
   seed: 1
+  # Particle swarm. PyGAD and Powell ignore these.
+  inertia: 0.7
+  cognitive: 1.5
+  social: 1.5
+  # Powell. PyGAD and the particle swarm ignore these.
+  maxfev: 40
+  xtol: 1.0e-3
+  ftol: 1.0e-3

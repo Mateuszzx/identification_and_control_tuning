@@ -38,6 +38,12 @@ the file starts at the repository root.
      mutation_by_replacement: true
      elitism: 1
      seed: 1
+     inertia: 0.7
+     cognitive: 1.5
+     social: 1.5
+     maxfev: 40
+     xtol: 1.0e-3
+     ftol: 1.0e-3
 
 ``identify.log`` is the CSV described in the :doc:`quickstart`. ``identify.out``
 is the plant JSON. ``identify.kp`` is the proportional gain of the loop that
@@ -55,16 +61,23 @@ error. The controller dead zone and accumulator are set in
 number, such as ``ki: 3``, fixes that gain. The search never leaves these
 limits.
 
-``method`` is ``powell`` or ``pygad``. Both minimize the same simulated error.
-``powell`` starts from the low, middle, and high end of each free gain, then
-keeps the visited point with the smallest error. ``pygad`` searches the same
-box genetically. ``generations``, ``population``, ``parents``, ``selection``,
-``crossover``, ``mutation``, ``elitism``, and ``seed`` apply only to
-``pygad``. ``selection`` is ``sss``, ``rws``, ``sus``, ``rank``, ``random``,
-or ``tournament``. ``crossover`` is ``single_point``, ``two_points``,
-``uniform``, or ``scattered``. ``mutation`` is ``random``, ``swap``,
-``inversion``, or ``scramble``. Omit ``parents`` to mate one third of the
-population. Powell ignores these entries.
+``method`` is ``powell``, ``pygad``, or ``pso``. All three minimize the same
+simulated error. ``powell`` starts from the low, middle, and high end of each
+free gain, then keeps the visited point with the smallest error. ``pygad``
+searches the same box genetically. ``pso`` is a global-best particle swarm:
+each particle moves toward its own best position and the swarm's best
+position. ``generations`` and ``population`` are the iteration count and
+swarm size for ``pso``, and the generation count and population for
+``pygad``. ``parents``, ``selection``, ``crossover``, ``mutation``, and
+``elitism`` apply only to ``pygad``. ``selection`` is ``sss``, ``rws``,
+``sus``, ``rank``, ``random``, or ``tournament``. ``crossover`` is
+``single_point``, ``two_points``, ``uniform``, or ``scattered``.
+``mutation`` is ``random``, ``swap``, ``inversion``, or ``scramble``. Omit
+``parents`` to mate one third of the population. ``inertia``, ``cognitive``,
+and ``social`` apply only to ``pso``. ``seed`` applies to ``pygad`` and
+``pso``. ``maxfev``, ``xtol``, and ``ftol`` apply only to ``powell``:
+``maxfev`` limits evaluations after the starting points, and ``xtol`` and
+``ftol`` are the step and cost tolerances.
 
 Identify
 --------
