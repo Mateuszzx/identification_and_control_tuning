@@ -18,7 +18,7 @@ class FitResult:
     model : Model
         Structure that was fitted.
     plant : Plant
-        Fitted plant, including the Coulomb dead-zone.
+        Fitted plant, including the Coulomb dead-zone when the model has friction.
     rmse : float
         Root-mean-square output error.
     at_bound : bool
@@ -178,8 +178,7 @@ class Fit:
         Returns
         -------
         polars.DataFrame
-            Columns ``model``, ``P``, ``G(s)``, ``Fc``, ``rmse``, and
-            ``at_bound``.
+            Columns ``model``, ``P``, ``G(s)``, ``Fc``, ``rmse``, and ``at_bound``.
         """
         return pl.DataFrame(
             {

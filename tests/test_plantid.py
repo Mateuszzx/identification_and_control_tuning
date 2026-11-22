@@ -24,7 +24,7 @@ class PlantIdentificationTest(unittest.TestCase):
         self.assertEqual(loaded.fc, plant.fc)
 
     def test_open_loop_matches_python_control(self):
-        plant = Plant("inertial", gain=4.0, taus=(0.3,), fc=0.0)
+        plant = Plant("inertial", gain=4.0, taus=(0.3,))
         dt = 0.001
         time = np.arange(0.0, 3.0, dt)
         command = np.ones_like(time)
@@ -38,7 +38,7 @@ class PlantIdentificationTest(unittest.TestCase):
         self.assertLess(np.max(np.abs(y - reference)), 0.02)
 
     def test_closed_loop_matches_feedback(self):
-        plant = Plant("inertial", gain=3.0, taus=(0.4,), fc=0.0)
+        plant = Plant("inertial", gain=3.0, taus=(0.4,))
         kp = 2.0
         dt = 0.001
         time = np.arange(0.0, 4.0, dt)
@@ -92,6 +92,34 @@ class PlantIdentificationTest(unittest.TestCase):
         self.assertEqual(record.setpoint.tolist(), [1.0, 2.0])
         self.assertEqual(record.measurement.tolist(), [0.0, 0.5])
 
+    def test_models_are_read_from_yaml(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "models.yaml"
+            path.write_text(
+                "\n".join(
+                    [
+                        "- name: custom",
+                        "  kind: integrator",
+                        "  order: 1",
+                        "  friction: true",
+                        "",
+                    ]
+                )
+            )
+            models = Model.read(path)
+        self.assertEqual(len(models), 1)
+        self.assertEqual(models[0].name, "custom")
+        self.assertEqual(models[0].kind, "integrator")
+        self.assertEqual(models[0].order, 1)
+        self.assertTrue(models[0].friction)
+
+    def test_models_file_rejects_an_unknown_kind(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "models.yaml"
+            path.write_text("- kind: delay\n  order: 1\n")
+            with self.assertRaises(ValueError):
+                Model.read(path)
+
 
 class FirmwarePidTest(unittest.TestCase):
     def test_step_matches_firmware_law(self):
@@ -122,15 +150,15 @@ class FirmwarePidTest(unittest.TestCase):
         self.assertEqual(pid.step(count, 0.0, 0.015), 0.0)
         self.assertGreater(abs(pid.step(2 * count, 0.0, 0.015)), 0.0)
 
-    def test_simulate_dead_zone_blanks_the_command(self):
-        plant = Plant("integrator", gain=0.8, taus=(), fc=0.0)
+    def test_simulate_uses_the_controller_dead_zone(self):
+        plant = Plant("integrator", gain=0.8, taus=())
         reference = np.full(5, 10.0)
         _y, command = simulate(
             plant,
             reference,
             Gains(1.0, 0.0, 0.0),
             dt=0.05,
-            dead_zone=100.0,
+            limits=Limits(dead_zone=100.0),
         )
         self.assertTrue(np.all(command == 0.0))
 

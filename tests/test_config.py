@@ -14,6 +14,7 @@ class ConfigTest(unittest.TestCase):
         self.assertTrue(cfg.tune.levels)
         self.assertEqual(len(cfg.tune.kp), 2)
         self.assertEqual(cfg.identify.kp, 2.0)
+        self.assertEqual(cfg.identify.models, (root / "config" / "models.yaml").resolve())
 
     def test_relative_paths_and_a_fixed_gain(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -25,17 +26,16 @@ class ConfigTest(unittest.TestCase):
                         "  log: data/log.csv",
                         "  out: model/plant.json",
                         "  kp: 1",
+                        "  models: config/models.yaml",
                         "tune:",
                         "  plant: model/plant.json",
                         "  dt: 0.015",
-                        "  dead_zone: 0.1",
                         "  hold: 6",
                         "  levels: [0, 90, 0]",
                         "  kp: [1, 10]",
                         "  ki: 3",
                         "  kd: [0]",
                         "  we: 1",
-                        "  allow_steady_state_error: false",
                         "  generations: 4",
                         "  population: 6",
                         "",
@@ -46,7 +46,6 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(cfg.identify.log, (root / "data" / "log.csv").resolve())
         self.assertEqual(cfg.tune.ki, (3.0, 3.0))
         self.assertEqual(cfg.tune.kd, (0.0, 0.0))
-        self.assertFalse(cfg.tune.allow_steady_state_error)
         self.assertEqual(cfg.tune.method, "pygad")
         self.assertEqual(cfg.tune.levels, (0.0, 90.0, 0.0))
 
@@ -60,17 +59,16 @@ class ConfigTest(unittest.TestCase):
                         "  log: data/log.csv",
                         "  out: model/plant.json",
                         "  kp: 1",
+                        "  models: config/models.yaml",
                         "tune:",
                         "  plant: model/plant.json",
                         "  dt: 0.015",
-                        "  dead_zone: 0.1",
                         "  hold: 6",
                         "  levels: [0]",
                         "  kp: [1, 2]",
                         "  ki: [0, 1]",
                         "  kd: 0",
                         "  we: 1",
-                        "  allow_steady_state_error: true",
                         "  method: pyomo",
                         "  generations: 1",
                         "  population: 4",

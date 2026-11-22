@@ -9,14 +9,17 @@ An integrator with ``n`` lags is
     G(s) = Kv / (s (τ1 s + 1) ... (τn s + 1))
 
 ``friction`` puts a Coulomb dead-zone on the plant input. :meth:`Model.fit`
-estimates the gain, the time constants, and that threshold.
+estimates the gain, the time constants, and that threshold. The structures
+to try are read from a YAML file, not listed in this module.
 """
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Literal
 
 import lmfit
 import numpy as np
+import yaml
 
 from plantid.plant import Plant
 
@@ -58,7 +61,9 @@ class Model:
             raise ValueError("an inertial model needs order >= 1")
 
     @classmethod
-    def inertial(cls, order: int, *, friction: bool = False, name: str | None = None) -> "Model":
+    def inertial(
+        cls, order: int, *, friction: bool = False, name: str | None = None
+    ) -> "Model":
         """Inertial plant ``K / Π(τ s + 1)`` of the given order.
 
         Parameters
@@ -80,7 +85,7 @@ class Model:
 
     @classmethod
     def integrator(
-        cls, lags: int = 0, *, friction: bool = True, name: str | None = None
+        cls, lags: int = 0, *, friction: bool = False, name: str | None = None
     ) -> "Model":
         """Integrator ``Kv / s`` with extra real poles.
 
@@ -89,7 +94,7 @@ class Model:
         lags : int, optional
             Number of extra real poles. Default is 0.
         friction : bool, optional
-            Fit a Coulomb input dead-zone. Default is true.
+            Fit a Coulomb input dead-zone. Default is false.
         name : str, optional
             Catalog label. The default is the Polish name used in the fit table.
 
@@ -107,22 +112,68 @@ class Model:
         return cls(label, "integrator", lags, friction)
 
     @classmethod
-    def catalog(cls) -> list["Model"]:
-        """Structures searched by identification.
+    def read(cls, path) -> list["Model"]:
+        """Read the structures identification should try.
+
+        Parameters
+        ----------
+        path : str or pathlib.Path
+            YAML list. Each item has ``kind`` (``inertial`` or ``integrator``),
+            ``order`` (lags for an integrator), and ``friction``. ``name`` is
+            optional.
 
         Returns
         -------
         list of Model
-            Inertial orders 1–3, each with and without friction, then integrators
-            with 0, 1, and 2 lags and friction.
+            One model per list item, in file order.
+
+        Raises
+        ------
+        ValueError
+            The file is empty, is not a list, or an item is not a usable model.
         """
-        models = [
-            cls.inertial(order, friction=friction)
-            for order in (1, 2, 3)
-            for friction in (False, True)
-        ]
-        models.extend(cls.integrator(lags, friction=True) for lags in (0, 1, 2))
-        return models
+        source = Path(path)
+        data = yaml.safe_load(source.read_text())
+        if not isinstance(data, list) or not data:
+            raise ValueError(f"{source} must be a non-empty list of models")
+        return [cls._entry(item, source) for item in data]
+
+    @classmethod
+    def _entry(cls, item, path: Path) -> "Model":
+        """Build one model from a YAML mapping.
+
+        Parameters
+        ----------
+        item : object
+            One list item from the models file.
+        path : pathlib.Path
+            File path, used in error messages.
+
+        Returns
+        -------
+        Model
+            Unfitted structure.
+
+        Raises
+        ------
+        ValueError
+            ``item`` is not a mapping, or ``kind`` or ``order`` is unusable.
+        """
+        if not isinstance(item, dict):
+            raise ValueError(f"{path} has an entry that is not a mapping")
+        kind = item.get("kind")
+        if kind not in ("inertial", "integrator"):
+            raise ValueError(f"{path} has unknown kind {kind!r}")
+        try:
+            order = int(item["order"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError(f"{path} needs an integer order for kind {kind!r}") from exc
+        friction = bool(item.get("friction", False))
+        name = item.get("name")
+        name = None if name is None else str(name)
+        if kind == "inertial":
+            return cls.inertial(order, friction=friction, name=name)
+        return cls.integrator(order, friction=friction, name=name)
 
     def fit(
         self,

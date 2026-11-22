@@ -16,40 +16,35 @@ the file starts at the repository root.
      log: data/fr_prop_pid.csv
      out: model/plant.json
      kp: 2.0
+     models: config/models.yaml
 
    tune:
      plant: model/plant.json
      dt: 0.015
-     dead_zone: 0.1
      hold: 6.0
      levels: [0, -30, 0, -60, 0, -90, 0, 30, 0, 60, 0, 90, 0]
      kp: [1.0, 120.0]
      ki: [0.0, 10.0]
      kd: [0.0, 1.5]
      we: 1.0
-     allow_steady_state_error: false
      method: pygad
      generations: 400
      population: 50
 
 ``identify.log`` is the CSV described in the :doc:`quickstart`. ``identify.out``
 is the plant JSON. ``identify.kp`` is the proportional gain of the loop that
-recorded the log. Tuning reads ``tune.plant``, which is normally the same file.
+recorded the log. ``identify.models`` is the YAML list of structures to fit.
+Add a block there to try another plant. Tuning reads ``tune.plant``, which is
+normally the same file.
 
-``dt`` is the simulation sample time in seconds. ``dead_zone`` is passed to
-:func:`pid.controller.make`. The shipped controller clears an error inside it
-before the proportional, integral, and derivative terms. ``hold`` is how long
-each entry in ``levels`` is held.
-``we`` weights the integral of squared setpoint error.
+``dt`` is the simulation sample time in seconds. ``hold`` is how long each
+entry in ``levels`` is held. ``we`` weights the integral of squared setpoint
+error. The controller dead zone and accumulator are set in
+:mod:`pid.controller`, not in this file.
 
 ``kp``, ``ki``, and ``kd`` are search intervals ``[low, high]``. A single
 number, such as ``ki: 3``, fixes that gain. The search never leaves these
 limits.
-
-``allow_steady_state_error: false`` raises the ``Ki`` floor, inside the
-interval you set, so the integrator can hold every level. If the whole
-interval is below that floor, ``Ki`` stays at the upper end and a shelf
-remains. ``true`` searches the whole ``Ki`` interval and may leave that shelf.
 
 ``method`` is ``powell`` or ``pygad``. Both minimize the same simulated error.
 ``powell`` starts from the low, middle, and high end of each free gain, then
@@ -64,10 +59,10 @@ Identify
    just identify
    uv run python app/identify.py --config config/config.yaml
 
-lmfit minimizes the output error of each candidate in the catalog. The
-catalog is inertial plants of order 1–3, with and without Coulomb friction,
-then integrators with 0, 1, and 2 lags and friction. The proportional gain
-is ``identify.kp``. It is not a fitted parameter.
+lmfit minimizes the output error of each structure in ``identify.models``.
+The shipped file tries inertial orders 1–3, with and without Coulomb friction,
+then integrators with 0, 1, and 2 lags and friction. The proportional gain is
+``identify.kp``. It is not a fitted parameter.
 
 The lowest RMSE is saved as a :class:`plantid.plant.Plant`: a transfer function
 with a Coulomb dead-zone on the input. ``output/identify.png`` shows the measured
@@ -94,8 +89,7 @@ is :meth:`pid.controller.PID.step`. The shipped body matches ``PID.cpp``:
 4. The command ``u`` is lifted to ``±min_output`` and clipped to ``±max_output``.
 
 To match a different PID, edit ``src/pid/controller.py``. Keep ``kp``, ``ki``,
-and ``kd``. Change :func:`pid.controller.integral_rate` when the integral
-limit is not ``anti_windup * dt * Ki``.
+and ``kd``. Dead zone and accumulator stay in that file.
 
 ``output/tune.png`` shows the setpoint, the simulated response, and the
 controller output. Printed text reports ``Kp``, ``Ki``, ``Kd``, the integral

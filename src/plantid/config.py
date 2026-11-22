@@ -20,16 +20,19 @@ class IdentifySetup:
         JSON file that receives the fitted plant.
     kp : float
         Proportional gain of the loop that collected the log. Not fitted.
+    models : pathlib.Path
+        YAML list of plant structures to fit.
     """
 
     log: Path
     out: Path
     kp: float
+    models: Path
 
 
 @dataclass(frozen=True)
 class TuneSetup:
-    """Waveform, firmware limits, and the search bounds.
+    """Waveform and the search bounds.
 
     Attributes
     ----------
@@ -37,8 +40,6 @@ class TuneSetup:
         Plant JSON written by identification.
     dt : float
         Sample time in seconds.
-    dead_zone : float
-        Firmware dead zone. Errors inside it are cleared.
     hold : float
         Seconds each setpoint level is held.
     levels : tuple of float
@@ -47,8 +48,6 @@ class TuneSetup:
         ``(low, high)`` search interval. Equal ends fix the gain.
     we : float
         Weight on the integral of squared setpoint error.
-    allow_steady_state_error : bool
-        When false, ``Ki`` is kept high enough to hold every level.
     method : str
         ``"powell"`` or ``"pygad"``.
     generations : int
@@ -59,14 +58,12 @@ class TuneSetup:
 
     plant: Path
     dt: float
-    dead_zone: float
     hold: float
     levels: tuple[float, ...]
     kp: tuple[float, float]
     ki: tuple[float, float]
     kd: tuple[float, float]
     we: float
-    allow_steady_state_error: bool
     method: str
     generations: int
     population: int
@@ -79,7 +76,7 @@ class Config:
     Attributes
     ----------
     identify : IdentifySetup
-        Log path, plant output path, and the recorded proportional gain.
+        Log path, plant output path, recorded proportional gain, and models file.
     tune : TuneSetup
         Waveform, limits, and search settings.
     """
@@ -212,12 +209,13 @@ def _identify(section: dict, root: Path) -> IdentifySetup:
     Returns
     -------
     IdentifySetup
-        Log path, plant output path, and the recorded proportional gain.
+        Log path, plant output path, recorded proportional gain, and models file.
     """
     return IdentifySetup(
         log=_file(section, "log", root),
         out=_file(section, "out", root),
         kp=float(section["kp"]),
+        models=_file(section, "models", root),
     )
 
 
@@ -240,14 +238,12 @@ def _tune(section: dict, root: Path) -> TuneSetup:
     return TuneSetup(
         plant=_file(section, "plant", root),
         dt=float(section["dt"]),
-        dead_zone=float(section["dead_zone"]),
         hold=float(section["hold"]),
         levels=tuple(float(level) for level in section["levels"]),
         kp=_pair(section["kp"], "kp"),
         ki=_pair(section["ki"], "ki"),
         kd=_pair(section["kd"], "kd"),
         we=float(section["we"]),
-        allow_steady_state_error=bool(section["allow_steady_state_error"]),
         method=_method(section.get("method", "pygad")),
         generations=int(section["generations"]),
         population=int(section["population"]),

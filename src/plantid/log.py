@@ -52,21 +52,22 @@ class Log:
             measurement=frame["measure_value"].to_numpy(),
         )
 
-    def identify(self, kp: float, models: list[Model] | None = None) -> Fit:
-        """Fit the catalog to this log in a P loop with gain ``kp``.
+    def identify(self, kp: float, models) -> Fit:
+        """Fit the given structures to this log in a P loop with gain ``kp``.
 
         Parameters
         ----------
         kp : float
             Proportional gain of the loop that collected the log. This is
             ``identify.kp`` in the config. It is not fitted.
-        models : list of Model, optional
-            Structures to fit. Default is :meth:`Model.catalog`.
+        models : list of Model or path
+            Structures to fit, or a YAML file of them. The config stores that
+            file as ``identify.models``.
 
         Returns
         -------
         Fit
             Fits sorted by increasing RMSE. The proportional gain is ``kp``.
         """
-        chosen = Model.catalog() if models is None else models
+        chosen = models if isinstance(models, list) else Model.read(models)
         return Fit.search(self.time, self.setpoint, self.measurement, chosen, kp=float(kp))

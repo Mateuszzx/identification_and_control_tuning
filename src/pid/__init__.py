@@ -2,16 +2,15 @@
 
 Edit :mod:`pid.controller` so :meth:`~pid.controller.PID.step` matches your
 PID. The tuner searches ``kp``, ``ki``, and ``kd``, builds the controller
-with :func:`~pid.controller.make`, and reads the integral limit from
-:func:`~pid.controller.integral_rate`.
+with :func:`~pid.controller.make`, and calls :meth:`~pid.controller.PID.step`.
+Dead zone and accumulator are part of that controller.
 """
 
-from pid.controller import PID, Gains, Limits, integral_rate, make
+from pid.controller import PID, Gains, Limits, make
 
 __all__ = [
     "PID",
     "Gains",
     "Limits",
-    "integral_rate",
     "make",
 ]

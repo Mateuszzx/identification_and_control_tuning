@@ -12,11 +12,11 @@ Edit this file to match your controller. The shipped :meth:`PID.step` is
 
 Keep :class:`Gains` fields ``kp``, ``ki``, and ``kd``. The tuner searches
 those three numbers, builds a controller with :func:`make`, and calls
-:meth:`PID.step`. If the integral limit is not ``anti_windup * dt * Ki``,
-change :func:`integral_rate` as well.
+:meth:`PID.step`. Dead zone, accumulator, and output limits are edited in
+this file. Identification and tuning do not know them.
 """
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 import numpy as np
 
@@ -57,7 +57,8 @@ class Limits:
     anti_windup : float
         Symmetric clamp on the error accumulator. Default is 100.
     dead_zone : float
-        Errors whose magnitude is below this are cleared. Default is 0.
+        Errors whose magnitude is below this are cleared. Default is 0.1,
+        the shipped firmware value.
     smoothing : float
         Accumulator leak, ``acc = error + (1 - smoothing) * acc``. Default is 0.
     """
@@ -65,7 +66,7 @@ class Limits:
     max_output: float = 100.0
     min_output: float = 0.0
     anti_windup: float = 100.0
-    dead_zone: float = 0.0
+    dead_zone: float = 0.1
     smoothing: float = 0.0
 
 
@@ -133,12 +134,7 @@ class PID:
         return u
 
 
-def make(
-    gains: Gains,
-    *,
-    limits: Limits | None = None,
-    dead_zone: float | None = None,
-) -> PID:
+def make(gains: Gains, *, limits: Limits | None = None) -> PID:
     """Build the controller the tuner steps.
 
     Parameters
@@ -147,38 +143,10 @@ def make(
         Gains for this candidate.
     limits : Limits, optional
         Controller limits. Default is :class:`Limits`.
-    dead_zone : float, optional
-        Override for ``limits.dead_zone``. Ignored when ``None``.
 
     Returns
     -------
     PID
         Controller ready for the first sample.
     """
-    chosen = limits if limits is not None else Limits()
-    if dead_zone is not None:
-        chosen = replace(chosen, dead_zone=float(dead_zone))
-    return PID(gains, chosen)
-
-
-def integral_rate(limits: Limits, dt: float) -> float:
-    """Command added by one unit of ``Ki`` when the accumulator is saturated.
-
-    This controller computes ``i = acc * dt * Ki`` with
-    ``|acc| <= anti_windup``, so the rate is ``anti_windup * dt``. Change
-    this function when your integral limit is different. The tuner divides
-    the holding command by this rate to choose the ``Ki`` floor.
-
-    Parameters
-    ----------
-    limits : Limits
-        Controller limits. This implementation reads ``anti_windup``.
-    dt : float
-        Sample time in seconds.
-
-    Returns
-    -------
-    float
-        ``anti_windup * dt``.
-    """
-    return limits.anti_windup * dt
+    return PID(gains, limits if limits is not None else Limits())

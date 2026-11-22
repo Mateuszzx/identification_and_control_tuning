@@ -49,9 +49,9 @@ return path:
 
    e(t) = w(t) - y_m(t)
 
-The PID block turns :math:`e(t)` into :math:`u(t)`. Coulomb friction sits on
-the plant input, before the linear dynamics. With :math:`z(t) = 0` the plant
-sees :math:`u(t)`:
+The PID block turns :math:`e(t)` into :math:`u(t)`. Its dead zone and
+accumulator live in :mod:`pid`. Coulomb friction sits on the plant input,
+before the linear dynamics. With :math:`z(t) = 0` the plant sees :math:`u(t)`:
 
 .. math::
 
@@ -78,7 +78,7 @@ An integrator with :math:`n` lags is
 
    G(s) = \frac{K_v}{s\,(\tau_1 s + 1)\cdots(\tau_n s + 1)}
 
-:math:`F_c = 0` removes the dead-zone. Time constants are real and positive.
+:math:`F_c = 0` removes the friction dead-zone. Time constants are real and positive.
 
 Identification
 --------------
@@ -87,13 +87,13 @@ The log is this loop running with a proportional controller, so the PID block
 is :math:`u(t) = K_p e(t)` while the data were collected. :math:`K_p` is
 ``identify.kp`` in the config. It is not fitted.
 
-:meth:`plantid.log.Log.identify` tries the catalog: inertial orders 1–3, with
-and without friction, then integrators with 0, 1, and 2 lags and friction.
-Each candidate is simulated on the logged time base with
-:math:`u(t) = K_p (w(t) - y(t))` and :math:`z(t) = 0`, including the input
-dead-zone. lmfit minimizes the error between :math:`y(t)` and
-``measure_value``. The lowest RMSE is written to ``model/plant.json`` as
-``kind``, ``gain``, ``taus``, and ``fc``.
+:meth:`plantid.log.Log.identify` tries every structure in ``identify.models``
+(``config/models.yaml``). Each candidate is simulated on the logged time base
+with :math:`u(t) = K_p (w(t) - y(t))` and :math:`z(t) = 0`, including the input
+dead-zone when that structure sets ``friction: true``. lmfit minimizes the
+error between :math:`y(t)` and ``measure_value``. The lowest RMSE is written
+to ``model/plant.json`` as ``kind``, ``gain``, ``taus``, and ``fc``. Add a
+block to the models file to try another structure.
 
 Tuning
 ------

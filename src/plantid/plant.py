@@ -1,10 +1,10 @@
 """Identified plant.
 
-The linear part is a :class:`control.TransferFunction` and the matching
+The plant is a :class:`control.TransferFunction` and the matching
 :class:`control.StateSpace` in phase-variable form, so the last state is the
-output. Coulomb friction is an input dead-zone. Discrete steps use
-:func:`control.sample_system` (zero-order hold), which is what a held command
-does.
+output. Coulomb friction is a dead-zone on the plant input. Discrete steps
+use :func:`control.sample_system` (zero-order hold), which is what a held
+command does. The controller dead zone and accumulator stay in :mod:`pid`.
 """
 
 import json
@@ -77,7 +77,7 @@ class Plant:
         Returns
         -------
         Plant
-            Plant rebuilt from ``kind``, ``gain``, ``taus``, and ``fc``.
+            Plant rebuilt from ``kind``, ``gain``, ``taus``, and ``fc``. A missing ``fc`` is 0.
 
         Raises
         ------
@@ -86,7 +86,7 @@ class Plant:
         """
         data = json.loads(Path(path).read_text())
         taus = tuple(float(tau) for tau in data["taus"])
-        return cls(str(data["kind"]), float(data["gain"]), taus, float(data["fc"]))
+        return cls(str(data["kind"]), float(data["gain"]), taus, float(data.get("fc", 0.0)))
 
     def save(self, path, **meta) -> None:
         """Write the plant parameters as JSON.
@@ -197,8 +197,6 @@ class Plant:
 
     def closed_loop(self, kp: float) -> control.TransferFunction:
         """Linear loop ``Kp G / (1 + Kp G)``.
-
-        Friction is not part of this system.
 
         Parameters
         ----------

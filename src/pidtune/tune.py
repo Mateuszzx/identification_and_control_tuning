@@ -15,7 +15,7 @@ import pygad
 from scipy.optimize import minimize
 
 from pid import Gains, Limits
-from pidtune.loop import ki_that_holds, simulate, steps
+from pidtune.loop import simulate, steps
 from plantid.plant import Plant
 
 log = logging.getLogger("pidtune")
@@ -88,9 +88,7 @@ def tune(
     ki: tuple[float, float],
     kd: tuple[float, float] = (0.0, 0.0),
     limits: Limits | None = None,
-    dead_zone: float | None = None,
     we: float = 1.0,
-    allow_steady_state_error: bool = False,
     method: str = "pygad",
     generations: int = 40,
     population: int = 24,
@@ -100,12 +98,8 @@ def tune(
 
     Each value in ``levels`` is held for ``hold`` seconds. ``powell`` and
     ``pygad`` minimize the same simulated ISE and stay inside the caller's
-    gain limits.
-
-    ``allow_steady_state_error`` left false raises the ``Ki`` floor, inside
-    the caller's range, to the gain that can hold every level. True searches
-    the whole supplied ``Ki`` range and keeps a shelf when that scores a
-    lower ISE.
+    gain limits. Dead zone and accumulator live in :mod:`pid` and are not
+    part of this search.
 
     Parameters
     ----------
@@ -121,14 +115,9 @@ def tune(
         ``(low, high)`` search interval. One number, or equal ends, fixes
         that gain. ``kd`` defaults to ``(0, 0)``.
     limits : pid.controller.Limits, optional
-        Controller limits. ``dead_zone`` overrides the dead zone on this object.
-    dead_zone : float, optional
-        Dead zone passed to :func:`pid.controller.make`. Overrides ``limits.dead_zone``.
+        Controller limits from :class:`pid.controller.Limits`. Default is that class.
     we : float, optional
         Weight on the integral of squared error. Default is 1.
-    allow_steady_state_error : bool, optional
-        When false, raise the ``Ki`` floor inside the caller limits. Default
-        is false.
     method : {"powell", "pygad"}, optional
         Search algorithm. Default is ``"pygad"``.
     generations : int, optional
@@ -153,10 +142,6 @@ def tune(
         limits = Limits()
     reference = steps(levels, hold, dt)
     spans = {"kp": _span(kp), "ki": _span(ki), "kd": _span(kd)}
-    if not allow_steady_state_error:
-        lo, hi = spans["ki"]
-        floor = ki_that_holds(plant, levels, limits, dt)
-        spans["ki"] = (min(hi, max(lo, floor)), hi)
 
     def score(genes: np.ndarray) -> tuple[Gains, float, np.ndarray, np.ndarray]:
         """Simulate one candidate and return its weighted ISE.
@@ -178,14 +163,7 @@ def tune(
             Controller output.
         """
         gains = _clip(genes, spans)
-        y, u = simulate(
-            plant,
-            reference,
-            gains,
-            dt=dt,
-            limits=limits,
-            dead_zone=dead_zone,
-        )
+        y, u = simulate(plant, reference, gains, dt=dt, limits=limits)
         ise = float(np.sum(np.square(reference - y)) * dt * we)
         return gains, ise, y, u
 

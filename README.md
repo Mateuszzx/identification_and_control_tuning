@@ -16,13 +16,11 @@ Logged CSV files belong in `data/`. That directory is gitignored.
 
 Edit `config/config.yaml`. Paths there are relative to the repository root.
 
-`identify.log` is the CSV. `identify.out` is the plant file, by default `model/plant.json`. `identify.kp` is the proportional gain of the loop that recorded the log. The log needs `time_s`, `set_point`, and `measure_value`. Other columns are ignored.
+`identify.log` is the CSV. `identify.out` is the plant file, by default `model/plant.json`. `identify.kp` is the proportional gain of the loop that recorded the log. `identify.models` points at `config/models.yaml`, the list of structures to fit. Add a block to that file to try another one. The log needs `time_s`, `set_point`, and `measure_value`. Other columns are ignored.
 
-`tune` sets the plant path, the sample time, the dead zone passed to `pid.make`, the setpoint levels, how long each level is held, and the `Kp`, `Ki`, `Kd` limits. A single number fixes that gain. `we` weights the integral of squared setpoint error.
+`tune` sets the plant path, the sample time, the setpoint levels, how long each level is held, and the `Kp`, `Ki`, `Kd` limits. A single number fixes that gain. `we` weights the integral of squared setpoint error. Dead zone and accumulator are edited in `src/pid/controller.py`.
 
 `method` is `powell` or `pygad`. Both minimize that same simulated error and stay inside the limits you set. `generations` and `population` apply to `pygad`.
-
-`allow_steady_state_error: false` raises the `Ki` floor, inside your limits, so the integrator can hold every level. The search never goes above the upper limit you set. `true` searches the whole `Ki` range and may leave a shelf.
 
 ## Identify
 
@@ -34,7 +32,7 @@ uv run app/identify.py --config config/config.yaml
 
 The same steps are in `notebooks/identify.ipynb`.
 
-lmfit minimizes the output error of each candidate. The catalog is inertial plants of order 1–3, with and without Coulomb friction, and integrators with 0–2 lags and friction. The proportional gain is `identify.kp`. It is not fitted. The lowest RMSE is written to `model/plant.json`: a `Plant`, a transfer function with a Coulomb dead-zone on the input.
+lmfit minimizes the output error of each structure in `config/models.yaml`. The shipped list is inertial plants of order 1–3, with and without Coulomb friction, and integrators with 0–2 lags and friction. The proportional gain is `identify.kp`. It is not fitted. The lowest RMSE is written to `model/plant.json`: a `Plant`, a transfer function with a Coulomb dead-zone on the input.
 
 ## Tune
 
@@ -46,7 +44,7 @@ The same `--config` default applies. `just tune path/to/other.yaml` selects anot
 
 The same search is in `notebooks/tune.ipynb`.
 
-The tuner calls `pid.make` and `PID.step`. The shipped controller clears the error inside the dead zone, clamps the accumulator to `±anti_windup`, starts the derivative from a previous error of zero, and lifts the output to `±min_output` before clipping it to `±max_output`. Change `integral_rate` in the same file when the integral limit is not `anti_windup * dt * Ki`.
+The tuner calls `pid.make` and `PID.step`. The shipped controller clears the error inside its dead zone, clamps the accumulator to `±anti_windup`, starts the derivative from a previous error of zero, and lifts the output to `±min_output` before clipping it to `±max_output`. Those limits are edited in `src/pid/controller.py`. Identification and tuning do not set them.
 
 ## Commands
 
