@@ -11,6 +11,18 @@
 #   zeros: 1
 #   friction: true
 
+- name: integrator 2, lag 1, derivative 1 + friction
+  integrators: 2
+  order: 1
+  zeros: 1
+  friction: true
+
+- name: integrator 2, lag 2, derivative 1 + friction
+  integrators: 2
+  order: 2
+  zeros: 1
+  friction: true
+
 - name: inertial 1
   kind: inertial
   order: 1

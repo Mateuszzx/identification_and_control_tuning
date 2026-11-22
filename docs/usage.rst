@@ -60,6 +60,8 @@ Identify
    uv run python app/identify.py --config config/config.yaml
 
 lmfit minimizes the output error of each structure in ``identify.models``.
+An interactive terminal shows a bar for each structure and its residual
+evaluations.
 The shipped file tries inertial orders 1–3, with and without Coulomb friction,
 then integrators with 0, 1, and 2 lags and friction. A block can set
 ``integrators`` to a higher power of ``1/s`` and ``zeros`` to the number of
@@ -78,7 +80,8 @@ Tune
    just tune
    uv run python app/tune.py --config config/config.yaml
 
-Run identification first, so ``tune.plant`` exists. The simulated controller
+Run identification first, so ``tune.plant`` exists. An interactive terminal
+shows Powell evaluations or PyGAD generations. The simulated controller
 is :meth:`pid.controller.PID.step`. The shipped body matches ``PID.cpp``:
 
 1. ``e = w - ym``, cleared when ``|e| < dead_zone``. ``w`` is the setpoint

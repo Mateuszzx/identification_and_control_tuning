@@ -54,6 +54,8 @@ The tuner calls `pid.make` and `PID.step`. The shipped controller clears the err
 - `just identify` fits the plant and writes `output/identify.png`.
 - `just tune` tunes the PID and writes `output/tune.png`.
 
+In an interactive terminal, identify shows a bar per structure and tune shows Powell evaluations or PyGAD generations.
+
 `output/` holds those figures. The image files are gitignored. Identify and tune stay off the CI workflow because the logs in `data/` are not in the repository.
 
 ## Documentation

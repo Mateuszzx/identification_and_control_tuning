@@ -13,6 +13,7 @@ from itertools import product
 import numpy as np
 import pygad
 from scipy.optimize import minimize
+from tqdm.auto import tqdm
 
 from pid import Gains, Limits
 from pidtune.loop import simulate, steps
@@ -98,8 +99,9 @@ def tune(
 
     Each value in ``levels`` is held for ``hold`` seconds. ``powell`` and
     ``pygad`` minimize the same simulated ISE and stay inside the caller's
-    gain limits. Dead zone and accumulator live in :mod:`pid` and are not
-    part of this search.
+    gain limits. An interactive terminal shows Powell evaluations or PyGAD
+    generations. The bar stays hidden when stderr is not a terminal. Dead
+    zone and accumulator live in :mod:`pid` and are not part of this search.
 
     Parameters
     ----------
@@ -227,6 +229,10 @@ def _powell(score, spans, reference) -> Solution:
     fixed = {name: spans[name][0] for name in names if name not in free}
     bounds = [spans[name] for name in free]
     visited: list[tuple[Gains, float, np.ndarray, np.ndarray]] = []
+    starts = _box_starts(bounds)
+    maxfev = 40
+    bar = tqdm(total=len(starts) + maxfev, desc="tune", unit="eval", disable=None)
+    best_ise = float("inf")
 
     def evaluate(point: np.ndarray) -> float:
         """ISE of one Powell point. The full result is kept in ``visited``.
@@ -241,21 +247,27 @@ def _powell(score, spans, reference) -> Solution:
         float
             Weighted ISE.
         """
+        nonlocal best_ise
         values = dict(fixed)
         values.update(zip(free, point))
         result = score(np.array([values[name] for name in names]))
         visited.append(result)
+        best_ise = min(best_ise, result[1])
+        bar.update(1)
+        bar.set_postfix(ise=f"{best_ise:.4g}")
         return result[1]
 
-    starts = _box_starts(bounds)
-    best_start = min(starts, key=evaluate)
-    minimize(
-        evaluate,
-        best_start,
-        method="Powell",
-        bounds=bounds,
-        options={"maxfev": 40, "xtol": 1e-3, "ftol": 1e-3},
-    )
+    try:
+        best_start = min(starts, key=evaluate)
+        minimize(
+            evaluate,
+            best_start,
+            method="Powell",
+            bounds=bounds,
+            options={"maxfev": maxfev, "xtol": 1e-3, "ftol": 1e-3},
+        )
+    finally:
+        bar.close()
     gains, ise, response, output = min(visited, key=lambda item: item[1])
     return Solution(gains, ise, reference, response, output)
 
@@ -313,23 +325,35 @@ def _pygad(
         return -ise
 
     parents = max(2, population // 3)
-    ga = pygad.GA(
-        num_generations=generations,
-        num_parents_mating=min(parents, population - 1),
-        fitness_func=fitness,
-        sol_per_pop=population,
-        num_genes=3,
-        gene_space=[_gene(*spans[name]) for name in ("kp", "ki", "kd")],
-        gene_type=float,
-        parent_selection_type="sss",
-        keep_elitism=1,
-        mutation_type="random",
-        mutation_by_replacement=True,
-        suppress_warnings=True,
-        random_seed=seed,
-        logger=log,
-    )
-    ga.run()
+    bar = tqdm(total=generations, desc="tune", unit="gen", disable=None)
+
+    def on_generation(ga) -> None:
+        """Advance one generation and show the best ISE so far."""
+        ise = -float(np.max(ga.last_generation_fitness))
+        bar.update(1)
+        bar.set_postfix(ise=f"{ise:.4g}")
+
+    try:
+        ga = pygad.GA(
+            num_generations=generations,
+            num_parents_mating=min(parents, population - 1),
+            fitness_func=fitness,
+            sol_per_pop=population,
+            num_genes=3,
+            gene_space=[_gene(*spans[name]) for name in ("kp", "ki", "kd")],
+            gene_type=float,
+            parent_selection_type="sss",
+            keep_elitism=1,
+            mutation_type="random",
+            mutation_by_replacement=True,
+            suppress_warnings=True,
+            random_seed=seed,
+            logger=log,
+            on_generation=on_generation,
+        )
+        ga.run()
+    finally:
+        bar.close()
     best, _fitness, _ = ga.best_solution()
     gains, ise, response, output = score(best)
     return Solution(gains, ise, reference, response, output)

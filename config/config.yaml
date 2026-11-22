@@ -12,13 +12,20 @@ identify:
 tune:
   plant: model/plant.json
   dt: 0.015
+
+  # Setpoint levels and how long to hold each level.
   hold: 6.0
   levels: [0, -30, 0, -60, 0, -90, 0, 30, 0, 60, 0, 90, 0]
+  
+  # Proportional, integral, and derivative gains to search.
   kp: [1.0, 120.0]
   ki: [0.0, 10.0]
   kd: [0.0, 1.5]
+
+  # Weighted integral of squared setpoint error.
   we: 1.0
+
   # powell or pygad. Both minimize the same simulated ISE.
   method: pygad
-  generations: 400
+  generations: 4
   population: 50

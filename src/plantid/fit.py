@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import polars as pl
+from tqdm.auto import tqdm
 
 from plantid.models import Model
 from plantid.plant import Plant
@@ -133,6 +134,9 @@ class Fit:
     ) -> "Fit":
         """Fit every model and sort by RMSE, lowest first.
 
+        An interactive terminal shows one step per structure. The bar stays
+        hidden when stderr is not a terminal.
+
         Parameters
         ----------
         time : numpy.ndarray
@@ -158,7 +162,9 @@ class Fit:
         """
         if not models:
             raise ValueError("models is empty")
-        results = [model.fit(time, setpoint, measurement, kp=kp) for model in models]
+        results = []
+        for model in tqdm(models, desc="identify", unit="model", disable=None):
+            results.append(model.fit(time, setpoint, measurement, kp=kp))
         results.sort(key=lambda item: item.rmse)
         return cls(results, kp)
 

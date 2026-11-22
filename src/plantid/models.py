@@ -19,6 +19,7 @@ from typing import Literal
 import lmfit
 import numpy as np
 import yaml
+from tqdm.auto import tqdm
 
 from plantid.plant import Plant
 
@@ -267,6 +268,8 @@ class Model:
 
         lmfit minimizes the squared error between the measured output and the
         simulated P loop. Gain, time constants, and friction are fitted in log space.
+        An interactive terminal counts residual evaluations. The bar stays
+        hidden when stderr is not a terminal.
 
         Parameters
         ----------
@@ -308,15 +311,27 @@ class Model:
             plant = self._plant(self._vector(pars))
             return plant.proportional_response(time, setpoint, kp, y0) - measurement
 
-        result = lmfit.minimize(
-            residual,
-            params,
-            method="least_squares",
-            max_nfev=40,
-            xtol=1e-10,
-            ftol=1e-8,
-            gtol=1e-8,
-        )
+        max_nfev = 40
+        bar = tqdm(total=max_nfev, desc=self.name, unit="eval", leave=False, disable=None)
+
+        def _progress(_pars, nfev, _resid, *_args, **_kws) -> None:
+            """Advance the residual bar. ``nfev`` is capped at ``max_nfev``."""
+            bar.n = min(int(nfev), max_nfev)
+            bar.refresh()
+
+        try:
+            result = lmfit.minimize(
+                residual,
+                params,
+                method="least_squares",
+                max_nfev=max_nfev,
+                xtol=1e-10,
+                ftol=1e-8,
+                gtol=1e-8,
+                iter_cb=_progress,
+            )
+        finally:
+            bar.close()
         plant = self._plant(self._vector(result.params))
         prediction = plant.proportional_response(time, setpoint, kp, y0)
         rmse = float(np.sqrt(np.mean(np.square(prediction - measurement))))

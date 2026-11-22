@@ -21,6 +21,7 @@ dependencies = [
     "pygad>=3.9.2",
     "pyyaml>=6.0.3",
     "scipy>=1.18.1",
+    "tqdm>=4.70.1",
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -43,7 +44,7 @@ docs = [
 target-version = "py314"
 line-length = 100
 src = ["src"]
-extend-exclude = ["notebooks", "docs"]
+extend-exclude = ["notebooks", "docs", "tests"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]

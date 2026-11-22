@@ -13,7 +13,7 @@ Python 3.14 is required. From the repository root:
 structures in ``config/models.yaml``, and writes ``model/plant.json`` and
 ``output/identify.png``.
 ``just tune`` loads that plant, searches the PID gains, and writes
-``output/tune.png``.
+``output/tune.png``. An interactive terminal shows a progress bar for both.
 
 Put the CSV log in ``data/`` before identifying. That directory is gitignored.
 The log needs these columns:
