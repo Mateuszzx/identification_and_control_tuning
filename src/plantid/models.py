@@ -263,6 +263,7 @@ class Model:
         measurement: np.ndarray,
         *,
         kp: float,
+        max_nfev: int = 40,
     ):
         """Output-error fit of this structure in a P loop with gain ``kp``.
 
@@ -281,6 +282,8 @@ class Model:
             Logged sensor reading :math:`y_m(t)`. The first sample is the initial condition.
         kp : float
             Proportional gain of the loop that collected the log.
+        max_nfev : int, optional
+            Residual evaluations allowed for this fit. Default is 40.
 
         Returns
         -------
@@ -311,12 +314,12 @@ class Model:
             plant = self._plant(self._vector(pars))
             return plant.proportional_response(time, setpoint, kp, y0) - measurement
 
-        max_nfev = 40
-        bar = tqdm(total=max_nfev, desc=self.name, unit="eval", leave=False, disable=None)
+        limit = int(max_nfev)
+        bar = tqdm(total=limit, desc=self.name, unit="eval", leave=False, disable=None)
 
         def _progress(_pars, nfev, _resid, *_args, **_kws) -> None:
-            """Advance the residual bar. ``nfev`` is capped at ``max_nfev``."""
-            bar.n = min(int(nfev), max_nfev)
+            """Advance the residual bar. ``nfev`` is capped at ``limit``."""
+            bar.n = min(int(nfev), limit)
             bar.refresh()
 
         try:
@@ -324,7 +327,7 @@ class Model:
                 residual,
                 params,
                 method="least_squares",
-                max_nfev=max_nfev,
+                max_nfev=limit,
                 xtol=1e-10,
                 ftol=1e-8,
                 gtol=1e-8,

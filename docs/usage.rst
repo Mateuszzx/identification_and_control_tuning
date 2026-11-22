@@ -17,6 +17,7 @@ the file starts at the repository root.
      out: model/plant.json
      kp: 2.0
      models: config/models.yaml
+     max_nfev: 100
 
    tune:
      plant: model/plant.json
@@ -30,11 +31,19 @@ the file starts at the repository root.
      method: pygad
      generations: 400
      population: 50
+     parents: 16
+     selection: sss
+     crossover: single_point
+     mutation: random
+     mutation_by_replacement: true
+     elitism: 1
+     seed: 1
 
 ``identify.log`` is the CSV described in the :doc:`quickstart`. ``identify.out``
 is the plant JSON. ``identify.kp`` is the proportional gain of the loop that
 recorded the log. ``identify.models`` is the YAML list of structures to fit.
-Add a block there to try another plant. Tuning reads ``tune.plant``, which is
+Add a block there to try another plant. ``identify.max_nfev`` is the number of
+residual evaluations allowed for each structure. Tuning reads ``tune.plant``, which is
 normally the same file.
 
 ``dt`` is the simulation sample time in seconds. ``hold`` is how long each
@@ -49,7 +58,13 @@ limits.
 ``method`` is ``powell`` or ``pygad``. Both minimize the same simulated error.
 ``powell`` starts from the low, middle, and high end of each free gain, then
 keeps the visited point with the smallest error. ``pygad`` searches the same
-box genetically. ``generations`` and ``population`` apply only to ``pygad``.
+box genetically. ``generations``, ``population``, ``parents``, ``selection``,
+``crossover``, ``mutation``, ``elitism``, and ``seed`` apply only to
+``pygad``. ``selection`` is ``sss``, ``rws``, ``sus``, ``rank``, ``random``,
+or ``tournament``. ``crossover`` is ``single_point``, ``two_points``,
+``uniform``, or ``scattered``. ``mutation`` is ``random``, ``swap``,
+``inversion``, or ``scramble``. Omit ``parents`` to mate one third of the
+population. Powell ignores these entries.
 
 Identify
 --------

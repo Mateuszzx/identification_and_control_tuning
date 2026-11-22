@@ -57,6 +57,13 @@ def main(argv: list[str] | None = None) -> None:
         method=cfg.method,
         generations=cfg.generations,
         population=cfg.population,
+        parents=cfg.parents,
+        selection=cfg.selection,
+        crossover=cfg.crossover,
+        mutation=cfg.mutation,
+        mutation_by_replacement=cfg.mutation_by_replacement,
+        elitism=cfg.elitism,
+        seed=cfg.seed,
     )
     print(tuned)
     figure = root / "output" / "tune.png"

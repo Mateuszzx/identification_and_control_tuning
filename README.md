@@ -16,11 +16,11 @@ Logged CSV files belong in `data/`. That directory is gitignored.
 
 Edit `config/config.yaml`. Paths there are relative to the repository root.
 
-`identify.log` is the CSV. `identify.out` is the plant file, by default `model/plant.json`. `identify.kp` is the proportional gain of the loop that recorded the log. `identify.models` points at `config/models.yaml`, the list of structures to fit. Add a block to that file to try another one. The log needs `time_s`, `set_point`, and `measure_value`. Other columns are ignored.
+`identify.log` is the CSV. `identify.out` is the plant file, by default `model/plant.json`. `identify.kp` is the proportional gain of the loop that recorded the log. `identify.models` points at `config/models.yaml`, the list of structures to fit. Add a block to that file to try another one. `identify.max_nfev` is the number of residual evaluations allowed for each structure. The log needs `time_s`, `set_point`, and `measure_value`. Other columns are ignored.
 
 `tune` sets the plant path, the sample time, the setpoint levels, how long each level is held, and the `Kp`, `Ki`, `Kd` limits. A single number fixes that gain. `we` weights the integral of squared setpoint error. Dead zone and accumulator are edited in `src/pid/controller.py`.
 
-`method` is `powell` or `pygad`. Both minimize that same simulated error and stay inside the limits you set. `generations` and `population` apply to `pygad`.
+`method` is `powell` or `pygad`. Both minimize that same simulated error and stay inside the limits you set. `generations`, `population`, `parents`, `selection`, `crossover`, `mutation`, `elitism`, and `seed` apply to `pygad`. Powell ignores them.
 
 ## Identify
 

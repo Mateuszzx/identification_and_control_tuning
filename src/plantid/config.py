@@ -22,12 +22,15 @@ class IdentifySetup:
         Proportional gain of the loop that collected the log. Not fitted.
     models : pathlib.Path
         YAML list of plant structures to fit.
+    max_nfev : int
+        Residual evaluations allowed while fitting each structure.
     """
 
     log: Path
     out: Path
     kp: float
     models: Path
+    max_nfev: int
 
 
 @dataclass(frozen=True)
@@ -54,6 +57,22 @@ class TuneSetup:
         Generations used by PyGAD.
     population : int
         Population size used by PyGAD.
+    parents : int
+        Parents mated in each PyGAD generation.
+    selection : str
+        PyGAD parent selection. One of ``sss``, ``rws``, ``sus``, ``rank``,
+        ``random``, and ``tournament``.
+    crossover : str
+        PyGAD crossover. One of ``single_point``, ``two_points``, ``uniform``,
+        and ``scattered``.
+    mutation : str
+        PyGAD mutation. One of ``random``, ``swap``, ``inversion``, and ``scramble``.
+    mutation_by_replacement : bool
+        Replace a gene with a new value drawn from its range.
+    elitism : int
+        Best solutions copied unchanged into the next generation.
+    seed : int or None
+        PyGAD seed. ``None`` leaves the generator unseeded.
     """
 
     plant: Path
@@ -67,6 +86,13 @@ class TuneSetup:
     method: str
     generations: int
     population: int
+    parents: int
+    selection: str
+    crossover: str
+    mutation: str
+    mutation_by_replacement: bool
+    elitism: int
+    seed: int | None
 
 
 @dataclass(frozen=True)
@@ -209,13 +235,15 @@ def _identify(section: dict, root: Path) -> IdentifySetup:
     Returns
     -------
     IdentifySetup
-        Log path, plant output path, recorded proportional gain, and models file.
+        Log path, plant output path, recorded proportional gain, models file,
+        and the residual-evaluation limit.
     """
     return IdentifySetup(
         log=_file(section, "log", root),
         out=_file(section, "out", root),
         kp=float(section["kp"]),
         models=_file(section, "models", root),
+        max_nfev=_positive_int(section["max_nfev"], "max_nfev"),
     )
 
 
@@ -233,8 +261,9 @@ def _tune(section: dict, root: Path) -> TuneSetup:
     -------
     TuneSetup
         Waveform, limits, and search settings. A missing ``method`` becomes
-        ``"pygad"``.
+        ``"pygad"``. Missing PyGAD entries use the shipped defaults.
     """
+    population = int(section["population"])
     return TuneSetup(
         plant=_file(section, "plant", root),
         dt=float(section["dt"]),
@@ -246,7 +275,21 @@ def _tune(section: dict, root: Path) -> TuneSetup:
         we=float(section["we"]),
         method=_method(section.get("method", "pygad")),
         generations=int(section["generations"]),
-        population=int(section["population"]),
+        population=population,
+        parents=_parents(population, section.get("parents")),
+        selection=_choice(section.get("selection", "sss"), "selection", _SELECTION),
+        crossover=_choice(section.get("crossover", "single_point"), "crossover", _CROSSOVER),
+        mutation=_choice(section.get("mutation", "random"), "mutation", _MUTATION),
+        mutation_by_replacement=_flag(
+            section.get("mutation_by_replacement", True),
+            "mutation_by_replacement",
+        ),
+        elitism=_parents_bound(
+            population,
+            _positive_int(section.get("elitism", 1), "elitism", minimum=0),
+            "elitism",
+        ),
+        seed=_seed(section.get("seed", 1)),
     )
 
 
@@ -295,6 +338,169 @@ def _method(value) -> str:
     if name not in ("powell", "pygad"):
         raise ValueError(f"tune method must be 'powell' or 'pygad', got {value!r}")
     return name
+
+
+_SELECTION = ("sss", "rws", "sus", "rank", "random", "tournament")
+_CROSSOVER = ("single_point", "two_points", "uniform", "scattered")
+_MUTATION = ("random", "swap", "inversion", "scramble")
+
+
+def _positive_int(value, name: str, *, minimum: int = 1) -> int:
+    """Return an integer at or above ``minimum``.
+
+    Parameters
+    ----------
+    value : int
+        Candidate count.
+    name : str
+        Entry name, used in the error message.
+    minimum : int, optional
+        Smallest accepted value. Default is 1.
+
+    Returns
+    -------
+    int
+        ``value`` as an integer.
+
+    Raises
+    ------
+    ValueError
+        ``value`` is not an integer, or it is below ``minimum``.
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}, got {value!r}")
+    return value
+
+
+def _parents(population: int, value) -> int:
+    """Parent count. A missing value is one third of the population, at least 2.
+
+    Parameters
+    ----------
+    population : int
+        PyGAD population.
+    value : int or None
+        Requested parent count. ``None`` uses the default.
+
+    Returns
+    -------
+    int
+        Parents mated in one generation. The default is clamped below ``population``.
+
+    Raises
+    ------
+    ValueError
+        An explicit count is below 2 or not smaller than ``population``.
+    """
+    if value is None:
+        return min(max(2, population // 3), population - 1)
+    return _parents_bound(population, _positive_int(value, "parents", minimum=2), "parents")
+
+
+def _parents_bound(population: int, count: int, name: str) -> int:
+    """Reject a count that leaves no room for the rest of the population.
+
+    Parameters
+    ----------
+    population : int
+        PyGAD population.
+    count : int
+        Candidate count.
+    name : str
+        Entry name, used in the error message.
+
+    Returns
+    -------
+    int
+        ``count`` when it is smaller than ``population``.
+
+    Raises
+    ------
+    ValueError
+        ``count`` is greater than or equal to ``population``.
+    """
+    if count >= population:
+        raise ValueError(f"{name} must be smaller than population {population}, got {count}")
+    return count
+
+
+def _choice(value, name: str, allowed: tuple[str, ...]) -> str:
+    """Normalize one named PyGAD option.
+
+    Parameters
+    ----------
+    value : str
+        Option from the config.
+    name : str
+        Entry name, used in the error message.
+    allowed : tuple of str
+        Accepted names.
+
+    Returns
+    -------
+    str
+        Lower-case option.
+
+    Raises
+    ------
+    ValueError
+        ``value`` is not one of ``allowed``.
+    """
+    text = str(value).strip().lower()
+    if text not in allowed:
+        names = ", ".join(allowed)
+        raise ValueError(f"{name} must be one of {names}, got {value!r}")
+    return text
+
+
+def _flag(value, name: str) -> bool:
+    """Return a boolean config flag.
+
+    Parameters
+    ----------
+    value : bool
+        Flag from the config.
+    name : str
+        Entry name, used in the error message.
+
+    Returns
+    -------
+    bool
+        ``value``.
+
+    Raises
+    ------
+    ValueError
+        ``value`` is not a boolean.
+    """
+    if not isinstance(value, bool):
+        raise ValueError(f"{name} must be true or false, got {value!r}")
+    return value
+
+
+def _seed(value) -> int | None:
+    """Return a PyGAD seed.
+
+    Parameters
+    ----------
+    value : int or None
+        Seed from the config. ``None`` leaves the generator unseeded.
+
+    Returns
+    -------
+    int or None
+        The seed.
+
+    Raises
+    ------
+    ValueError
+        ``value`` is not an integer or ``None``.
+    """
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"seed must be an integer or null, got {value!r}")
+    return value
 
 
 def _pair(value, name: str) -> tuple[float, float]:

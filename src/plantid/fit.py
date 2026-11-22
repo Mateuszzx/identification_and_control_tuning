@@ -131,6 +131,7 @@ class Fit:
         models: list[Model],
         *,
         kp: float,
+        max_nfev: int = 40,
     ) -> "Fit":
         """Fit every model and sort by RMSE, lowest first.
 
@@ -149,6 +150,8 @@ class Fit:
             Structures to fit. Must not be empty.
         kp : float
             Proportional gain of the loop that collected the log.
+        max_nfev : int, optional
+            Residual evaluations allowed for each structure. Default is 40.
 
         Returns
         -------
@@ -164,7 +167,7 @@ class Fit:
             raise ValueError("models is empty")
         results = []
         for model in tqdm(models, desc="identify", unit="model", disable=None):
-            results.append(model.fit(time, setpoint, measurement, kp=kp))
+            results.append(model.fit(time, setpoint, measurement, kp=kp, max_nfev=max_nfev))
         results.sort(key=lambda item: item.rmse)
         return cls(results, kp)
 

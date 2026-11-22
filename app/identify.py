@@ -44,7 +44,11 @@ def main(argv: list[str] | None = None) -> None:
     if not log.is_file():
         raise SystemExit(f"log not found: {log}")
     record = plantid.Log.read(log)
-    found = record.identify(cfg.identify.kp, cfg.identify.models)
+    found = record.identify(
+        cfg.identify.kp,
+        cfg.identify.models,
+        max_nfev=cfg.identify.max_nfev,
+    )
     best = found.best
     best.save(out)
     print(best.model.name)

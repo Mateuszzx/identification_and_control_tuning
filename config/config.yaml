@@ -8,6 +8,8 @@ identify:
   kp: 2.0
   # Structures to try. Add an entry in that file to fit another model.
   models: config/models.yaml
+  # Residual evaluations allowed while fitting each structure.
+  max_nfev: 300
 
 tune:
   plant: model/plant.json
@@ -18,14 +20,22 @@ tune:
   levels: [0, -30, 0, -60, 0, -90, 0, 30, 0, 60, 0, 90, 0]
   
   # Proportional, integral, and derivative gains to search.
-  kp: [1.0, 120.0]
-  ki: [0.0, 10.0]
-  kd: [0.0, 1.5]
+  kp: [40.0, 150.0]
+  ki: [0.0, 30.0]
+  kd: [0.0, 6.5]
 
   # Weighted integral of squared setpoint error.
   we: 1.0
 
   # powell or pygad. Both minimize the same simulated ISE.
   method: pygad
-  generations: 4
+  # PyGAD only. Powell ignores these. Omit parents to use one third of population.
+  generations: 400
   population: 50
+  parents: 16
+  selection: sss
+  crossover: single_point
+  mutation: random
+  mutation_by_replacement: true
+  elitism: 1
+  seed: 1

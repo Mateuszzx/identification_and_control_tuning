@@ -36,8 +36,8 @@ gain of the loop that recorded the log. It is not fitted. ``identify.models``
 is the YAML list of structures to try.
 
 Edit ``config/config.yaml`` to point ``identify.log`` at that file, set
-``identify.kp``, and set the setpoint levels and the ``Kp``, ``Ki``, and
-``Kd`` limits. Add a structure by editing ``config/models.yaml``. Paths in
+``identify.kp`` and ``identify.max_nfev``, and set the setpoint levels and
+the ``Kp``, ``Ki``, and ``Kd`` limits. Add a structure by editing ``config/models.yaml``. Paths in
 the file are relative to the repository root.
 
 Another config file can be passed explicitly:

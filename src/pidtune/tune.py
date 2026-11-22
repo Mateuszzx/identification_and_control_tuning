@@ -93,6 +93,12 @@ def tune(
     method: str = "pygad",
     generations: int = 40,
     population: int = 24,
+    parents: int | None = None,
+    selection: str = "sss",
+    crossover: str = "single_point",
+    mutation: str = "random",
+    mutation_by_replacement: bool = True,
+    elitism: int = 1,
     seed: int | None = 1,
 ) -> Solution:
     """Search ``kp``, ``ki``, and ``kd``.
@@ -126,6 +132,21 @@ def tune(
         PyGAD generations. Ignored by Powell. Default is 40.
     population : int, optional
         PyGAD population. Ignored by Powell. Default is 24.
+    parents : int or None, optional
+        Parents mated each generation. ``None`` uses one third of
+        ``population``, at least 2. Ignored by Powell.
+    selection : {"sss", "rws", "sus", "rank", "random", "tournament"}, optional
+        PyGAD parent selection. Ignored by Powell. Default is ``"sss"``.
+    crossover : {"single_point", "two_points", "uniform", "scattered"}, optional
+        PyGAD crossover. Ignored by Powell. Default is ``"single_point"``.
+    mutation : {"random", "swap", "inversion", "scramble"}, optional
+        PyGAD mutation. Ignored by Powell. Default is ``"random"``.
+    mutation_by_replacement : bool, optional
+        Replace a mutated gene with a new value from its range. Ignored by
+        Powell. Default is true.
+    elitism : int, optional
+        Best solutions copied unchanged into the next generation. Ignored by
+        Powell. Default is 1.
     seed : int or None, optional
         PyGAD seed. Ignored by Powell. Default is 1.
 
@@ -177,7 +198,20 @@ def tune(
 
     if method == "powell":
         return _powell(score, spans, reference)
-    return _pygad(score, spans, reference, generations, population, seed)
+    return _pygad(
+        score,
+        spans,
+        reference,
+        generations,
+        population,
+        parents,
+        selection,
+        crossover,
+        mutation,
+        mutation_by_replacement,
+        elitism,
+        seed,
+    )
 
 
 def _method(value) -> str:
@@ -278,6 +312,12 @@ def _pygad(
     reference,
     generations: int,
     population: int,
+    parents: int | None,
+    selection: str,
+    crossover: str,
+    mutation: str,
+    mutation_by_replacement: bool,
+    elitism: int,
     seed: int | None,
 ) -> Solution:
     """PyGAD search of the same box scored by ``score``.
@@ -295,6 +335,14 @@ def _pygad(
         Number of generations.
     population : int
         Number of solutions per generation.
+    parents : int or None
+        Parents mated each generation. ``None`` uses one third of ``population``.
+    selection, crossover, mutation : str
+        PyGAD operator names.
+    mutation_by_replacement : bool
+        Replace a mutated gene from its range.
+    elitism : int
+        Best solutions copied unchanged into the next generation.
     seed : int or None
         Seed passed to PyGAD.
 
@@ -302,6 +350,12 @@ def _pygad(
     -------
     Solution
         Best generation member, rescored on ``reference``.
+
+    Raises
+    ------
+    ValueError
+        A PyGAD operator name is unknown, or ``parents`` or ``elitism`` does
+        not fit in ``population``.
     """
 
     def fitness(_ga, genes, _index) -> float:
@@ -324,7 +378,12 @@ def _pygad(
         _gains, ise, _y, _u = score(genes)
         return -ise
 
-    parents = max(2, population // 3)
+    mating = _ga_count(population, parents, "parents", minimum=2)
+    selection = _ga_name(selection, "selection", _SELECTION)
+    crossover = _ga_name(crossover, "crossover", _CROSSOVER)
+    mutation = _ga_name(mutation, "mutation", _MUTATION)
+    if elitism < 0 or elitism >= population:
+        raise ValueError(f"elitism must be from 0 to {population - 1}, got {elitism}")
     bar = tqdm(total=generations, desc="tune", unit="gen", disable=None)
 
     def on_generation(ga) -> None:
@@ -336,16 +395,17 @@ def _pygad(
     try:
         ga = pygad.GA(
             num_generations=generations,
-            num_parents_mating=min(parents, population - 1),
+            num_parents_mating=mating,
             fitness_func=fitness,
             sol_per_pop=population,
             num_genes=3,
             gene_space=[_gene(*spans[name]) for name in ("kp", "ki", "kd")],
             gene_type=float,
-            parent_selection_type="sss",
-            keep_elitism=1,
-            mutation_type="random",
-            mutation_by_replacement=True,
+            parent_selection_type=selection,
+            crossover_type=crossover,
+            keep_elitism=elitism,
+            mutation_type=mutation,
+            mutation_by_replacement=mutation_by_replacement,
             suppress_warnings=True,
             random_seed=seed,
             logger=log,
@@ -357,6 +417,73 @@ def _pygad(
     best, _fitness, _ = ga.best_solution()
     gains, ise, response, output = score(best)
     return Solution(gains, ise, reference, response, output)
+
+
+_SELECTION = ("sss", "rws", "sus", "rank", "random", "tournament")
+_CROSSOVER = ("single_point", "two_points", "uniform", "scattered")
+_MUTATION = ("random", "swap", "inversion", "scramble")
+
+
+def _ga_name(value, name: str, allowed: tuple[str, ...]) -> str:
+    """Normalize one PyGAD operator name.
+
+    Parameters
+    ----------
+    value : str
+        Operator name.
+    name : str
+        Parameter name, used in the error message.
+    allowed : tuple of str
+        Accepted names.
+
+    Returns
+    -------
+    str
+        Lower-case operator name.
+
+    Raises
+    ------
+    ValueError
+        ``value`` is not one of ``allowed``.
+    """
+    text = str(value).strip().lower()
+    if text not in allowed:
+        raise ValueError(f"{name} must be one of {', '.join(allowed)}, got {value!r}")
+    return text
+
+
+def _ga_count(population: int, value: int | None, name: str, *, minimum: int) -> int:
+    """Parent count that leaves room for offspring.
+
+    Parameters
+    ----------
+    population : int
+        Number of solutions per generation.
+    value : int or None
+        Requested count. ``None`` uses one third of ``population``, at least 2,
+        and clamps it below ``population``.
+    name : str
+        Parameter name, used in the error message.
+    minimum : int
+        Smallest explicit count.
+
+    Returns
+    -------
+    int
+        Count passed to PyGAD.
+
+    Raises
+    ------
+    ValueError
+        An explicit count is below ``minimum`` or not smaller than ``population``.
+    """
+    if value is None:
+        return min(max(2, population // 3), population - 1)
+    if isinstance(value, bool) or not isinstance(value, int):
+        raise ValueError(f"{name} must be from {minimum} to {population - 1}, got {value}")
+    if value < minimum or value >= population:
+        raise ValueError(f"{name} must be from {minimum} to {population - 1}, got {value}")
+    return value
 
 
 def _span(values) -> tuple[float, float]:

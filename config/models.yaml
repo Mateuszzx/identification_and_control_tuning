@@ -11,17 +11,48 @@
 #   zeros: 1
 #   friction: true
 
-- name: integrator 2, lag 1, derivative 1 + friction
-  integrators: 2
-  order: 1
+
+
+- name: lag 3, derivative 2 + friction
+  order: 3
+  zeros: 2
+  friction: true
+
+- name: lag 3, derivative 2 
+  order: 3
+  zeros: 2
+  friction: false
+
+- name: lag 2, derivative 2 + friction
+  order: 2
+  zeros: 2
+  friction: true
+
+- name: lag 4, derivative 2 + friction
+  order: 4
+  zeros: 2
+  friction: true
+
+
+- name: lag 3, integrator 1, derivative 2 + friction
+  order: 3
+  zeros: 2
+  integrators: 1
+  friction: true
+
+- name: lag 3, integrator 1, derivative 3 + friction
+  order: 3
+  zeros: 3
+  integrators: 1
+  friction: true
+
+
+- name: lag 3, derivative 1 + friction
+  order: 3
   zeros: 1
   friction: true
 
-- name: integrator 2, lag 2, derivative 1 + friction
-  integrators: 2
-  order: 2
-  zeros: 1
-  friction: true
+
 
 - name: inertial 1
   kind: inertial
@@ -67,3 +98,15 @@
   kind: integrator
   order: 2
   friction: true
+
+- name: inertial 4 + friction
+  kind: inertial
+  order: 4
+  friction: true
+
+- name: inertial 5 + friction
+  kind: inertial
+  order: 5
+  friction: true
+
+

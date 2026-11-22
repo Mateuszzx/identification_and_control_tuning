@@ -15,6 +15,14 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(len(cfg.tune.kp), 2)
         self.assertEqual(cfg.identify.kp, 2.0)
         self.assertEqual(cfg.identify.models, (root / "config" / "models.yaml").resolve())
+        self.assertEqual(cfg.identify.max_nfev, 300)
+        self.assertEqual(cfg.tune.parents, 16)
+        self.assertEqual(cfg.tune.selection, "sss")
+        self.assertEqual(cfg.tune.crossover, "single_point")
+        self.assertEqual(cfg.tune.mutation, "random")
+        self.assertTrue(cfg.tune.mutation_by_replacement)
+        self.assertEqual(cfg.tune.elitism, 1)
+        self.assertEqual(cfg.tune.seed, 1)
 
     def test_relative_paths_and_a_fixed_gain(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -27,6 +35,7 @@ class ConfigTest(unittest.TestCase):
                         "  out: model/plant.json",
                         "  kp: 1",
                         "  models: config/models.yaml",
+                        "  max_nfev: 40",
                         "tune:",
                         "  plant: model/plant.json",
                         "  dt: 0.015",
@@ -47,6 +56,8 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(cfg.tune.ki, (3.0, 3.0))
         self.assertEqual(cfg.tune.kd, (0.0, 0.0))
         self.assertEqual(cfg.tune.method, "pygad")
+        self.assertEqual(cfg.tune.parents, 2)
+        self.assertEqual(cfg.tune.selection, "sss")
         self.assertEqual(cfg.tune.levels, (0.0, 90.0, 0.0))
 
     def test_unknown_method_is_rejected(self):
@@ -60,6 +71,7 @@ class ConfigTest(unittest.TestCase):
                         "  out: model/plant.json",
                         "  kp: 1",
                         "  models: config/models.yaml",
+                        "  max_nfev: 40",
                         "tune:",
                         "  plant: model/plant.json",
                         "  dt: 0.015",

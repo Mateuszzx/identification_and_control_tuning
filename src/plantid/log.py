@@ -52,7 +52,7 @@ class Log:
             measurement=frame["measure_value"].to_numpy(),
         )
 
-    def identify(self, kp: float, models) -> Fit:
+    def identify(self, kp: float, models, *, max_nfev: int = 40) -> Fit:
         """Fit the given structures to this log in a P loop with gain ``kp``.
 
         Parameters
@@ -63,6 +63,9 @@ class Log:
         models : list of Model or path
             Structures to fit, or a YAML file of them. The config stores that
             file as ``identify.models``.
+        max_nfev : int, optional
+            Residual evaluations allowed for each structure. This is
+            ``identify.max_nfev`` in the config. Default is 40.
 
         Returns
         -------
@@ -70,4 +73,11 @@ class Log:
             Fits sorted by increasing RMSE. The proportional gain is ``kp``.
         """
         chosen = models if isinstance(models, list) else Model.read(models)
-        return Fit.search(self.time, self.setpoint, self.measurement, chosen, kp=float(kp))
+        return Fit.search(
+            self.time,
+            self.setpoint,
+            self.measurement,
+            chosen,
+            kp=float(kp),
+            max_nfev=max_nfev,
+        )
