@@ -13,7 +13,23 @@ from plantid.plant import io_system, proportional_response
 
 @dataclass
 class FitResult:
-    """One fitted model."""
+    """One fitted model.
+
+    Attributes
+    ----------
+    model : Model
+        Structure that was fitted.
+    plant : control.NonlinearIOSystem
+        Fitted plant, including the Coulomb dead-zone.
+    rmse : float
+        Root-mean-square output error.
+    at_bound : bool
+        True when a fitted parameter sits on its bound.
+    prediction : numpy.ndarray
+        Simulated output on the logged time base.
+    kp : float
+        Proportional gain used in the simulated loop.
+    """
 
     model: Model
     plant: control.NonlinearIOSystem
@@ -24,19 +40,47 @@ class FitResult:
 
     @property
     def gain(self) -> float:
+        """Fitted linear gain.
+
+        Returns
+        -------
+        float
+            ``K`` for an inertial plant, ``Kv`` for an integrator.
+        """
         return float(self.plant.params["gain"])
 
     @property
     def taus(self) -> tuple[float, ...]:
+        """Fitted time constants.
+
+        Returns
+        -------
+        tuple of float
+            Real poles, in the order stored on the plant.
+        """
         return tuple(self.plant.params["taus"])
 
     @property
     def fc(self) -> float | None:
+        """Fitted Coulomb threshold.
+
+        Returns
+        -------
+        float or None
+            Threshold when the model includes friction, otherwise ``None``.
+        """
         if not self.model.friction:
             return None
         return float(self.plant.params["fc"])
 
     def formula(self) -> str:
+        """Text form of the linear transfer function.
+
+        Returns
+        -------
+        str
+            ``G(s)`` with time constants sorted from slowest to fastest.
+        """
         taus = tuple(sorted(self.taus, reverse=True))
         lags = "".join(f"({tau:.4g} s + 1)" for tau in taus)
         if self.model.kind == "integrator":
@@ -48,17 +92,40 @@ class FitResult:
 
 @dataclass
 class Fit:
-    """Ranked search result. ``best`` is the lowest RMSE."""
+    """Ranked search result. ``best`` is the lowest RMSE.
+
+    Attributes
+    ----------
+    results : list of FitResult
+        Fits sorted by RMSE, lowest first.
+    kp : float
+        Proportional gain shared by every fit.
+    """
 
     results: list[FitResult]
     kp: float
 
     @property
     def best(self) -> FitResult:
+        """Fit with the lowest RMSE.
+
+        Returns
+        -------
+        FitResult
+            ``results[0]``.
+        """
         return self.results[0]
 
     @property
     def table(self) -> pl.DataFrame:
+        """One row per fitted model.
+
+        Returns
+        -------
+        polars.DataFrame
+            Columns ``model``, ``P``, ``G(s)``, ``Fc``, ``rmse``, and
+            ``at_bound``.
+        """
         return pl.DataFrame(
             {
                 "model": [item.model.name for item in self.results],
@@ -76,6 +143,23 @@ def loop_gain(error: np.ndarray, p_term: np.ndarray) -> float:
 
     ``p_term`` is ``Kp * error`` before the output clip, so the ratio stays
     the collection gain on saturated samples too.
+
+    Parameters
+    ----------
+    error : numpy.ndarray
+        Logged ``setpoint - measurement``.
+    p_term : numpy.ndarray
+        Logged proportional term, the same length as ``error``.
+
+    Returns
+    -------
+    float
+        Median ratio over samples whose absolute error exceeds ``1e-9``.
+
+    Raises
+    ------
+    ValueError
+        Every error sample is effectively zero.
     """
     error = np.asarray(error, dtype=float)
     p_term = np.asarray(p_term, dtype=float)
@@ -96,7 +180,25 @@ def fit_model(
     """Output-error fit of a single model in a P loop with gain ``kp``.
 
     lmfit minimizes the squared error between the measured output and the
-    simulated P loop. Gain, time constants and friction are fitted in log space.
+    simulated P loop. Gain, time constants, and friction are fitted in log space.
+
+    Parameters
+    ----------
+    time : numpy.ndarray
+        Sample times from the log.
+    setpoint : numpy.ndarray
+        Logged reference.
+    measurement : numpy.ndarray
+        Logged output. The first sample is the initial condition.
+    model : Model
+        Structure to fit. Its parameters are not read from a previous fit.
+    kp : float
+        Proportional gain of the loop that collected the log.
+
+    Returns
+    -------
+    FitResult
+        Fitted plant, its prediction, and the output RMSE.
     """
     time = np.asarray(time, dtype=float)
     setpoint = np.asarray(setpoint, dtype=float)
@@ -105,6 +207,18 @@ def fit_model(
     params = _parameters(model)
 
     def residual(pars: lmfit.Parameters) -> np.ndarray:
+        """Output error of the P loop at one parameter vector.
+
+        Parameters
+        ----------
+        pars : lmfit.Parameters
+            Log-space gain, time constants, and optional friction.
+
+        Returns
+        -------
+        numpy.ndarray
+            Simulated output minus the measurement.
+        """
         plant = _plant_from_log(model, _vector(pars, model))
         return proportional_response(plant, time, setpoint, kp, y0) - measurement
 
@@ -131,7 +245,31 @@ def search(
     *,
     kp: float,
 ) -> Fit:
-    """Fit every model and sort by RMSE, lowest first."""
+    """Fit every model and sort by RMSE, lowest first.
+
+    Parameters
+    ----------
+    time : numpy.ndarray
+        Sample times from the log.
+    setpoint : numpy.ndarray
+        Logged reference.
+    measurement : numpy.ndarray
+        Logged output.
+    models : list of Model
+        Structures to fit. Must not be empty.
+    kp : float
+        Proportional gain of the loop that collected the log.
+
+    Returns
+    -------
+    Fit
+        All fits, sorted by increasing RMSE.
+
+    Raises
+    ------
+    ValueError
+        ``models`` is empty.
+    """
     if not models:
         raise ValueError("models is empty")
     results = [fit_model(time, setpoint, measurement, model, kp=kp) for model in models]
@@ -140,7 +278,19 @@ def search(
 
 
 def _parameters(model: Model) -> lmfit.Parameters:
-    """Log-space parameters. Exponentiating them keeps gain, τ and Fc positive."""
+    """Log-space parameters. Exponentiating them keeps gain, τ, and Fc positive.
+
+    Parameters
+    ----------
+    model : Model
+        Structure whose order and friction flag select the parameters.
+
+    Returns
+    -------
+    lmfit.Parameters
+        ``log_gain``, one ``log_tau_i`` per pole, and ``log_fc`` when the
+        model has friction. Bounds are included.
+    """
     n = model.order
     if model.kind == "inertial":
         gain0 = np.log(20.0 if model.friction else 8.0)
@@ -158,6 +308,20 @@ def _parameters(model: Model) -> lmfit.Parameters:
 
 
 def _vector(params: lmfit.Parameters, model: Model) -> np.ndarray:
+    """Stack the log parameters in plant-builder order.
+
+    Parameters
+    ----------
+    params : lmfit.Parameters
+        Parameters from :func:`_parameters`.
+    model : Model
+        Structure that decides how many time constants and whether Fc is present.
+
+    Returns
+    -------
+    numpy.ndarray
+        ``[log_gain, log_tau_0, ..., log_fc]``. ``log_fc`` is omitted without friction.
+    """
     values = [params["log_gain"].value]
     values.extend(params[f"log_tau_{index}"].value for index in range(model.order))
     if model.friction:
@@ -166,6 +330,18 @@ def _vector(params: lmfit.Parameters, model: Model) -> np.ndarray:
 
 
 def _at_bound(params: lmfit.Parameters) -> bool:
+    """Report whether any parameter is within ``1e-3`` of a bound.
+
+    Parameters
+    ----------
+    params : lmfit.Parameters
+        Optimized parameters.
+
+    Returns
+    -------
+    bool
+        True when any value is that close to its minimum or maximum.
+    """
     for par in params.values():
         if abs(par.value - par.min) < 1e-3 or abs(par.value - par.max) < 1e-3:
             return True
@@ -173,6 +349,20 @@ def _at_bound(params: lmfit.Parameters) -> bool:
 
 
 def _plant_from_log(model: Model, p: np.ndarray) -> control.NonlinearIOSystem:
+    """Build a plant from a log-parameter vector.
+
+    Parameters
+    ----------
+    model : Model
+        Structure that selects the kind and whether the last entry is friction.
+    p : numpy.ndarray
+        Vector from :func:`_vector`.
+
+    Returns
+    -------
+    control.NonlinearIOSystem
+        Plant with positive gain, time constants sorted descending, and Fc.
+    """
     gain = float(np.exp(p[0]))
     taus = tuple(sorted((float(np.exp(v)) for v in p[1 : 1 + model.order]), reverse=True))
     fc = float(np.exp(p[-1])) if model.friction else 0.0

@@ -5,10 +5,20 @@ from pathlib import Path
 
 import yaml
 
+DEFAULT_CONFIG = Path("config") / "config.yaml"
+
 
 @dataclass(frozen=True)
 class IdentifySetup:
-    """Log to fit, and where the fitted plant is written."""
+    """Log to fit, and where the fitted plant is written.
+
+    Attributes
+    ----------
+    log : pathlib.Path
+        Closed-loop CSV log.
+    out : pathlib.Path
+        JSON file that receives the fitted plant.
+    """
 
     log: Path
     out: Path
@@ -16,7 +26,33 @@ class IdentifySetup:
 
 @dataclass(frozen=True)
 class TuneSetup:
-    """Waveform, firmware limits, and the search bounds."""
+    """Waveform, firmware limits, and the search bounds.
+
+    Attributes
+    ----------
+    plant : pathlib.Path
+        Plant JSON written by identification.
+    dt : float
+        Sample time in seconds.
+    dead_zone : float
+        Firmware dead zone. Errors inside it are cleared.
+    hold : float
+        Seconds each setpoint level is held.
+    levels : tuple of float
+        Setpoint values, in order.
+    kp, ki, kd : tuple of float
+        ``(low, high)`` search interval. Equal ends fix the gain.
+    we : float
+        Weight on the integral of squared setpoint error.
+    allow_steady_state_error : bool
+        When false, ``Ki`` is kept high enough to hold every level.
+    method : str
+        ``"powell"`` or ``"pygad"``.
+    generations : int
+        Generations used by PyGAD.
+    population : int
+        Population size used by PyGAD.
+    """
 
     plant: Path
     dt: float
@@ -35,15 +71,91 @@ class TuneSetup:
 
 @dataclass(frozen=True)
 class Config:
+    """Identification setup and tuning setup from one YAML file.
+
+    Attributes
+    ----------
+    identify : IdentifySetup
+        Log path and plant output path.
+    tune : TuneSetup
+        Waveform, limits, and search settings.
+    """
+
     identify: IdentifySetup
     tune: TuneSetup
+
+
+def repository_root(start: Path) -> Path:
+    """Directory containing ``pyproject.toml``, walking up from ``start``.
+
+    Parameters
+    ----------
+    start : pathlib.Path
+        File or directory to start from.
+
+    Returns
+    -------
+    pathlib.Path
+        Nearest ancestor, including ``start`` itself, that contains
+        ``pyproject.toml``.
+
+    Raises
+    ------
+    FileNotFoundError
+        No ancestor contains ``pyproject.toml``.
+    """
+    start = Path(start).resolve()
+    chain = start.parents if start.is_file() else (start, *start.parents)
+    for candidate in chain:
+        if (candidate / "pyproject.toml").is_file():
+            return candidate
+    raise FileNotFoundError(f"no pyproject.toml above {start}")
+
+
+def resolve_config(path: str | Path | None, root: Path) -> Path:
+    """Absolute config path. A relative path starts at ``root``.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path or None
+        Config path. ``None`` selects :data:`DEFAULT_CONFIG`.
+    root : pathlib.Path
+        Repository root used for a relative ``path``.
+
+    Returns
+    -------
+    pathlib.Path
+        Absolute config path. The file is not required to exist yet.
+    """
+    candidate = DEFAULT_CONFIG if path is None else Path(path)
+    if not candidate.is_absolute():
+        candidate = Path(root) / candidate
+    return candidate.resolve()
 
 
 def load_config(path, *, root=None) -> Config:
     """Load a YAML config.
 
-    Relative paths are resolved from ``root``. When ``root`` is omitted they
-    are resolved from the directory that contains the config file.
+    Relative paths inside the file are resolved from ``root``. When ``root``
+    is omitted they are resolved from the directory that contains the file.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        YAML file to read.
+    root : pathlib.Path, optional
+        Base for relative paths stored in the file.
+
+    Returns
+    -------
+    Config
+        Parsed identification and tuning setup.
+
+    Raises
+    ------
+    ValueError
+        The file is not a mapping, a required section is missing, a gain
+        bound is malformed, or ``method`` is not ``powell`` or ``pygad``.
     """
     path = Path(path)
     base = Path(root) if root is not None else path.parent
@@ -57,6 +169,27 @@ def load_config(path, *, root=None) -> Config:
 
 
 def _section(data: dict, name: str, path: Path) -> dict:
+    """Return one mapping section of the config file.
+
+    Parameters
+    ----------
+    data : dict
+        Parsed YAML document.
+    name : str
+        Section name, ``"identify"`` or ``"tune"``.
+    path : pathlib.Path
+        Config path, used in the error message.
+
+    Returns
+    -------
+    dict
+        The requested section.
+
+    Raises
+    ------
+    ValueError
+        The section is missing or is not a mapping.
+    """
     value = data.get(name)
     if not isinstance(value, dict):
         raise ValueError(f"{path} is missing the {name} section")
@@ -64,10 +197,39 @@ def _section(data: dict, name: str, path: Path) -> dict:
 
 
 def _identify(section: dict, root: Path) -> IdentifySetup:
+    """Build the identification setup.
+
+    Parameters
+    ----------
+    section : dict
+        ``identify`` mapping from the YAML file.
+    root : pathlib.Path
+        Base for relative paths.
+
+    Returns
+    -------
+    IdentifySetup
+        Log path and plant output path.
+    """
     return IdentifySetup(log=_file(section, "log", root), out=_file(section, "out", root))
 
 
 def _tune(section: dict, root: Path) -> TuneSetup:
+    """Build the tuning setup.
+
+    Parameters
+    ----------
+    section : dict
+        ``tune`` mapping from the YAML file.
+    root : pathlib.Path
+        Base for the plant path.
+
+    Returns
+    -------
+    TuneSetup
+        Waveform, limits, and search settings. A missing ``method`` becomes
+        ``"pygad"``.
+    """
     return TuneSetup(
         plant=_file(section, "plant", root),
         dt=float(section["dt"]),
@@ -86,6 +248,22 @@ def _tune(section: dict, root: Path) -> TuneSetup:
 
 
 def _file(section: dict, key: str, root: Path) -> Path:
+    """Resolve one path entry.
+
+    Parameters
+    ----------
+    section : dict
+        Mapping that holds the path.
+    key : str
+        Entry name.
+    root : pathlib.Path
+        Base for a relative path.
+
+    Returns
+    -------
+    pathlib.Path
+        Absolute path.
+    """
     candidate = Path(str(section[key]))
     if candidate.is_absolute():
         return candidate
@@ -93,6 +271,23 @@ def _file(section: dict, key: str, root: Path) -> Path:
 
 
 def _method(value) -> str:
+    """Normalize a search-method name.
+
+    Parameters
+    ----------
+    value : str
+        Method name from the config.
+
+    Returns
+    -------
+    str
+        ``"powell"`` or ``"pygad"``.
+
+    Raises
+    ------
+    ValueError
+        ``value`` is not one of those two names.
+    """
     name = str(value).strip().lower()
     if name not in ("powell", "pygad"):
         raise ValueError(f"tune method must be 'powell' or 'pygad', got {value!r}")
@@ -100,6 +295,25 @@ def _method(value) -> str:
 
 
 def _pair(value, name: str) -> tuple[float, float]:
+    """Turn a gain entry into a closed interval.
+
+    Parameters
+    ----------
+    value : float or sequence of float
+        One number fixes the gain. Two numbers are the low and high ends.
+    name : str
+        Gain name, used in the error message.
+
+    Returns
+    -------
+    tuple of float
+        ``(low, high)``. A single number is repeated.
+
+    Raises
+    ------
+    ValueError
+        ``value`` is not a number or a sequence of one or two numbers.
+    """
     if isinstance(value, (int, float)):
         number = float(value)
         return number, number

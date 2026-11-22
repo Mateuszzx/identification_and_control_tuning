@@ -1,6 +1,6 @@
-# Plant identification and firmware PID tuning
+# Plant identification and PID tuning
 
-Fit a plant from a closed-loop proportional log, save it as JSON, then tune the firmware PID on that plant. Identification and tuning are separate: `identify.py` does not choose gains, and `tune.py` does not fit a plant.
+Fit a plant from a closed-loop proportional log, save it as JSON, then tune the PID in `src/pid/controller.py` on that plant. Identification and tuning are separate: `identify.py` does not choose gains, and `tune.py` does not fit a plant. Edit `PID.step` in that module to match your controller. The shipped body matches `PID.cpp`.
 
 ## Setup
 
@@ -18,7 +18,7 @@ Edit `config/config.yaml`. Paths there are relative to the repository root.
 
 `identify.log` is the CSV. `identify.out` is the plant file, by default `model/plant.json`. The log needs `time_s`, `set_point`, `measure_value`, `error`, and `p_term`.
 
-`tune` sets the plant path, the sample time, the firmware dead zone, the setpoint levels, how long each level is held, and the `Kp`, `Ki`, `Kd` limits. A single number fixes that gain. `we` weights the integral of squared setpoint error.
+`tune` sets the plant path, the sample time, the dead zone passed to `pid.make`, the setpoint levels, how long each level is held, and the `Kp`, `Ki`, `Kd` limits. A single number fixes that gain. `we` weights the integral of squared setpoint error.
 
 `method` is `powell` or `pygad`. Both minimize that same simulated error and stay inside the limits you set. `generations` and `population` apply to `pygad`.
 
@@ -27,8 +27,10 @@ Edit `config/config.yaml`. Paths there are relative to the repository root.
 ## Identify
 
 ```bash
-uv run python identify.py
+uv run app/identify.py --config config/config.yaml
 ```
+
+`--config` is optional and defaults to `config/config.yaml`. A relative path starts at the repository root. `just identify` uses that default; `just identify path/to/other.yaml` selects another file.
 
 The same steps are in `notebooks/identify.ipynb`.
 
@@ -37,12 +39,14 @@ lmfit minimizes the output error of each candidate. The catalog is inertial plan
 ## Tune
 
 ```bash
-uv run python tune.py
+uv run app/tune.py --config config/config.yaml
 ```
+
+The same `--config` default applies. `just tune path/to/other.yaml` selects another file.
 
 The same search is in `notebooks/tune.ipynb`.
 
-The simulated controller follows the firmware law. The error is cleared inside the dead zone, the accumulator is clamped to `±anti_windup`, the derivative on the first sample starts from a previous error of zero, and the output is lifted to `±min_output` and clipped to `±max_output`.
+The tuner calls `pid.make` and `PID.step`. The shipped controller clears the error inside the dead zone, clamps the accumulator to `±anti_windup`, starts the derivative from a previous error of zero, and lifts the output to `±min_output` before clipping it to `±max_output`. Change `integral_rate` in the same file when the integral limit is not `anti_windup * dt * Ki`.
 
 ## Commands
 
@@ -53,6 +57,18 @@ The simulated controller follows the firmware law. The error is cleared inside t
 - `just tune` tunes the PID and writes `output/tune.png`.
 
 `output/` holds those figures. The image files are gitignored. Identify and tune stay off the CI workflow because the logs in `data/` are not in the repository.
+
+## Documentation
+
+```bash
+just docs
+```
+
+That writes HTML to `docs/_build/html`. On every push to `main`, GitHub Actions builds the same site and publishes it to GitHub Pages:
+
+https://mateuszzx.github.io/identification_and_control_tuning/
+
+In the repository settings, set Pages → Build and deployment → Source to **GitHub Actions**.
 
 ## Tests
 

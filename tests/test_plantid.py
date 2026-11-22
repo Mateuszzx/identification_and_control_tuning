@@ -5,17 +5,14 @@ from pathlib import Path
 import control
 import numpy as np
 
+from pid import ENCODER_STEP, PID, Gains, Limits
+from pidtune.loop import simulate
 from plantid import (
-    ENCODER_STEP,
-    FirmwarePID,
-    Gains,
-    Limits,
     closed_loop,
     fit_model,
     inertial,
     integrator,
     search,
-    simulate,
 )
 from plantid.plant import initial_state, io_system, load, proportional_response, save, step
 
@@ -95,7 +92,7 @@ class PlantIdentificationTest(unittest.TestCase):
 
 class FirmwarePidTest(unittest.TestCase):
     def test_step_matches_firmware_law(self):
-        pid = FirmwarePID(Gains(2.0, 10.0, 0.015), Limits(min_output=0.0))
+        pid = PID(Gains(2.0, 10.0, 0.015), Limits(min_output=0.0))
         # First sample: D uses last_error = 0, so d = Kd * error / dt = 10.
         out = pid.step(10.0, 0.0, 0.015)
         self.assertAlmostEqual(out, 31.5)
@@ -105,19 +102,19 @@ class FirmwarePidTest(unittest.TestCase):
         self.assertAlmostEqual(pid.acc, 20.0)
 
     def test_dead_zone_min_output_and_anti_windup(self):
-        pid = FirmwarePID(Gains(1.0, 0.0, 0.0), Limits(dead_zone=0.5, anti_windup=100.0))
+        pid = PID(Gains(1.0, 0.0, 0.0), Limits(dead_zone=0.5, anti_windup=100.0))
         self.assertEqual(pid.step(0.1, 0.0, 0.015), 0.0)
         self.assertEqual(pid.acc, 0.0)
 
-        lifted = FirmwarePID(Gains(0.01, 0.0, 0.0), Limits(min_output=5.0, max_output=100.0))
+        lifted = PID(Gains(0.01, 0.0, 0.0), Limits(min_output=5.0, max_output=100.0))
         self.assertEqual(lifted.step(1.0, 0.0, 0.015), 5.0)
 
-        clamped = FirmwarePID(Gains(0.0, 1.0, 0.0), Limits(anti_windup=2.0))
+        clamped = PID(Gains(0.0, 1.0, 0.0), Limits(anti_windup=2.0))
         clamped.step(10.0, 0.0, 0.015)
         self.assertEqual(clamped.acc, 2.0)
 
     def test_dead_zone_blanks_one_encoder_count(self):
-        pid = FirmwarePID(Gains(8.0, 10.0, 0.0), Limits(dead_zone=0.2))
+        pid = PID(Gains(8.0, 10.0, 0.0), Limits(dead_zone=0.2))
         self.assertEqual(pid.step(ENCODER_STEP, 0.0, 0.015), 0.0)
         self.assertGreater(abs(pid.step(2 * ENCODER_STEP, 0.0, 0.015)), 0.0)
 

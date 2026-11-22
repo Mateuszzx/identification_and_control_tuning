@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from plantid.config import load_config
+from plantid.config import load_config, repository_root, resolve_config
 
 
 class ConfigTest(unittest.TestCase):
@@ -77,3 +77,15 @@ class ConfigTest(unittest.TestCase):
             )
             with self.assertRaises(ValueError):
                 load_config(root / "config.yaml")
+
+    def test_default_config_resolves_from_the_repository_root(self):
+        root = repository_root(Path(__file__).resolve().parents[1] / "app" / "identify.py")
+        self.assertEqual(root, Path(__file__).resolve().parents[1])
+        self.assertEqual(
+            resolve_config(None, root),
+            (root / "config" / "config.yaml").resolve(),
+        )
+        self.assertEqual(
+            resolve_config("config/config.yaml", root),
+            (root / "config" / "config.yaml").resolve(),
+        )

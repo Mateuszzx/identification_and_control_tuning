@@ -30,16 +30,23 @@ test:
 # Lint and test. Continuous integration runs this.
 check: lint test
 
-# Fit the plant and write output/identify.png.
-identify:
+# Build the HTML documentation into docs/_build/html.
+docs:
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{justfile_directory()}}"
-    uv run python identify.py
+    uv run sphinx-build -W -b html docs docs/_build/html
 
-# Tune the firmware PID and write output/tune.png.
-tune:
+# Fit the plant and write output/identify.png. An optional path overrides config/config.yaml.
+identify config="config/config.yaml":
     #!/usr/bin/env bash
     set -euo pipefail
     cd "{{justfile_directory()}}"
-    uv run python tune.py
+    uv run python app/identify.py --config "{{config}}"
+
+# Tune the firmware PID and write output/tune.png. An optional path overrides config/config.yaml.
+tune config="config/config.yaml":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd "{{justfile_directory()}}"
+    uv run python app/tune.py --config "{{config}}"

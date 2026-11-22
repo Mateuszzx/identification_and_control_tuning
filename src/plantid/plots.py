@@ -7,7 +7,23 @@ import numpy as np
 
 
 def save_identify(path, time, setpoint, measurement, prediction, label) -> None:
-    """Write the measured output, the fitted response, and the residual."""
+    """Write the measured output, the fitted response, and the residual.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        PNG destination. Parent directories are created.
+    time : array_like
+        Sample times.
+    setpoint : array_like
+        Logged reference.
+    measurement : array_like
+        Logged output.
+    prediction : array_like
+        Fitted output, the same length as ``measurement``.
+    label : str
+        Legend entry for ``prediction``.
+    """
     plt = _pyplot()
     time = np.asarray(time, dtype=float)
     measurement = np.asarray(measurement, dtype=float)
@@ -28,7 +44,21 @@ def save_identify(path, time, setpoint, measurement, prediction, label) -> None:
 
 
 def save_tune(path, time, reference, response, output) -> None:
-    """Write the setpoint, the simulated response, and the controller output."""
+    """Write the setpoint, the simulated response, and the controller output.
+
+    Parameters
+    ----------
+    path : str or pathlib.Path
+        PNG destination. Parent directories are created.
+    time : array_like
+        Sample times.
+    reference : array_like
+        Setpoint waveform.
+    response : array_like
+        Simulated plant output.
+    output : array_like
+        Controller command.
+    """
     plt = _pyplot()
     fig, axes = plt.subplots(
         2, 1, figsize=(11, 6), sharex=True, gridspec_kw={"height_ratios": (2, 1)}
@@ -45,6 +75,13 @@ def save_tune(path, time, reference, response, output) -> None:
 
 
 def _pyplot():
+    """Matplotlib pyplot bound to the Agg backend.
+
+    Returns
+    -------
+    module
+        ``matplotlib.pyplot`` after forcing the Agg backend.
+    """
     matplotlib.use("Agg", force=True)
     import matplotlib.pyplot as plt
 
@@ -52,6 +89,15 @@ def _pyplot():
 
 
 def _write(fig, path) -> None:
+    """Save a figure and close it.
+
+    Parameters
+    ----------
+    fig : matplotlib.figure.Figure
+        Figure to write.
+    path : str or pathlib.Path
+        PNG destination. Parent directories are created.
+    """
     destination = Path(path)
     destination.parent.mkdir(parents=True, exist_ok=True)
     fig.tight_layout()

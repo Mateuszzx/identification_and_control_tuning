@@ -5,7 +5,8 @@ from pathlib import Path
 import control
 
 import pidtune
-from plantid.pid import Limits, ki_that_holds
+from pid import Limits
+from pidtune.loop import ki_that_holds
 from plantid.plant import io_system, save
 
 

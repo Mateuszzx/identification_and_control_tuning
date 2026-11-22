@@ -12,8 +12,27 @@ import numpy as np
 def companion(kind: str, gain: float, taus: tuple[float, ...]):
     """Phase-variable realization of the linear plant.
 
-    Returns the transfer function together with ``A``, ``B`` and ``C`` such
-    that ``y = C x`` and ``C = [0 ... 1]``.
+    The output is the last state, so ``C = [0 ... 1]``.
+
+    Parameters
+    ----------
+    kind : {"inertial", "integrator"}
+        ``"integrator"`` adds a free pole at the origin.
+    gain : float
+        Numerator gain, ``K`` or ``Kv``.
+    taus : tuple of float
+        Extra real time constants. Each contributes a factor ``(tau s + 1)``.
+
+    Returns
+    -------
+    system : control.TransferFunction
+        Linear plant ``G(s)``.
+    a : numpy.ndarray
+        State matrix of shape ``(n, n)``.
+    b : numpy.ndarray
+        Input vector of shape ``(n,)``.
+    c : numpy.ndarray
+        Output row of shape ``(n,)``, with ``c[-1] == 1``.
     """
     denominator = np.array([1.0, 0.0]) if kind == "integrator" else np.array([1.0])
     for tau in taus:
@@ -34,5 +53,20 @@ def companion(kind: str, gain: float, taus: tuple[float, ...]):
 
 
 def closed_loop(system: control.TransferFunction, kp: float) -> control.TransferFunction:
-    """Linear loop ``Kp G / (1 + Kp G)``. Friction is not part of this system."""
+    """Linear loop ``Kp G / (1 + Kp G)``.
+
+    Friction is not part of this system.
+
+    Parameters
+    ----------
+    system : control.TransferFunction
+        Linear plant.
+    kp : float
+        Proportional gain wrapped around the plant.
+
+    Returns
+    -------
+    control.TransferFunction
+        Unity-feedback closed loop.
+    """
     return control.feedback(kp * system, 1)

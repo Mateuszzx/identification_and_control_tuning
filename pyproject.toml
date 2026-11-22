@@ -5,7 +5,7 @@ build-backend = "hatchling.build"
 [project]
 name = "pid"
 version = "0.1.0"
-description = "Identify a plant from a closed-loop log and tune the firmware PID."
+description = "Identify a plant from a closed-loop log and tune a standalone PID."
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = [
@@ -21,7 +21,7 @@ dependencies = [
 ]
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/plantid", "src/pidtune"]
+packages = ["src/pid", "src/plantid", "src/pidtune"]
 
 [tool.hatch.build.targets.wheel.sources]
 "src" = ""
@@ -31,12 +31,16 @@ dev = [
     "pytest>=9.2.0",
     "ruff>=0.14.0",
 ]
+docs = [
+    "sphinx>=9.2.0",
+    "sphinx-rtd-theme>=3.1.0",
+]
 
 [tool.ruff]
 target-version = "py314"
 line-length = 100
 src = ["src"]
-extend-exclude = ["notebooks"]
+extend-exclude = ["notebooks", "docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
