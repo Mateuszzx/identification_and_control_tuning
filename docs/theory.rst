@@ -66,7 +66,16 @@ is drawn separately, but it is not fitted. In the simulator the sensor is the
 identity, so :math:`y_m(t) = y(t)`. The log already stores :math:`y_m`, and
 the fitted plant is the path from :math:`u` to that measurement.
 
-Two plant families are fitted. An inertial plant of order :math:`n` is
+Each structure in ``config/models.yaml`` is
+
+.. math::
+
+   G(s) = \frac{K(\zeta_1 s + 1)\cdots(\zeta_m s + 1)}{s^q(\tau_1 s + 1)\cdots(\tau_n s + 1)}
+
+:math:`q` is ``integrators``, :math:`m` is ``zeros``, and :math:`n` is ``order``.
+:math:`q = 0` is an inertial plant. :math:`q = 1` and :math:`m = 0` is one
+integrator. :math:`m` must not exceed :math:`q + n`, so the plant is not improper.
+An inertial plant of order :math:`n` is
 
 .. math::
 
@@ -92,8 +101,9 @@ is :math:`u(t) = K_p e(t)` while the data were collected. :math:`K_p` is
 with :math:`u(t) = K_p (w(t) - y(t))` and :math:`z(t) = 0`, including the input
 dead-zone when that structure sets ``friction: true``. lmfit minimizes the
 error between :math:`y(t)` and ``measure_value``. The lowest RMSE is written
-to ``model/plant.json`` as ``kind``, ``gain``, ``taus``, and ``fc``. Add a
-block to the models file to try another structure.
+to ``model/plant.json`` as ``kind``, ``integrators``, ``gain``, ``taus``,
+``zeros``, and ``fc``. Add a block to the models file to try another
+integrator power or another number of derivative zeros.
 
 Tuning
 ------

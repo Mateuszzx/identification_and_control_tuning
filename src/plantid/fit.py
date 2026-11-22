@@ -79,13 +79,15 @@ class FitResult:
         str
             ``G(s)`` with time constants sorted from slowest to fastest.
         """
-        taus = tuple(sorted(self.taus, reverse=True))
-        lags = "".join(f"({tau:.4g} s + 1)" for tau in taus)
-        if self.model.kind == "integrator":
-            if lags:
-                return f"{self.gain:.4g} / (s {lags})"
-            return f"{self.gain:.4g} / s"
-        return f"{self.gain:.4g} / {lags}"
+        num = f"{self.gain:.4g}" + "".join(f"({zero:.4g} s + 1)" for zero in self.plant.zeros)
+        lags = "".join(f"({tau:.4g} s + 1)" for tau in sorted(self.taus, reverse=True))
+        power = self.plant.integrators
+        if power == 0:
+            return f"{num} / {lags}"
+        pole = "s" if power == 1 else f"s^{power}"
+        if lags:
+            return f"{num} / ({pole} {lags})"
+        return f"{num} / {pole}"
 
     def save(self, path) -> None:
         """Write this plant as JSON, including the fit metadata.

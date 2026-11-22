@@ -61,7 +61,9 @@ Identify
 
 lmfit minimizes the output error of each structure in ``identify.models``.
 The shipped file tries inertial orders 1–3, with and without Coulomb friction,
-then integrators with 0, 1, and 2 lags and friction. The proportional gain is
+then integrators with 0, 1, and 2 lags and friction. A block can set
+``integrators`` to a higher power of ``1/s`` and ``zeros`` to the number of
+real derivative factors. The proportional gain is
 ``identify.kp``. It is not a fitted parameter.
 
 The lowest RMSE is saved as a :class:`plantid.plant.Plant`: a transfer function

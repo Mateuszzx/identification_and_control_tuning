@@ -15,13 +15,31 @@ class PlantIdentificationTest(unittest.TestCase):
         plant = Plant("inertial", gain=2.5, taus=(1.5, 0.2), fc=4.0)
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "plant.json"
-            plant.save(path, model="inercyjny 2 + tarcie", kp=1.0, rmse=0.2)
+            plant.save(path, model="inertial 2 + friction", kp=1.0, rmse=0.2)
             loaded = Plant.load(path)
         self.assertIsInstance(loaded, Plant)
         self.assertEqual(loaded.kind, plant.kind)
         self.assertEqual(loaded.gain, plant.gain)
         self.assertEqual(loaded.taus, plant.taus)
         self.assertEqual(loaded.fc, plant.fc)
+
+    def test_lead_and_double_integrator_match_python_control(self):
+        dt = 0.001
+        time = np.arange(0.0, 3.0, dt)
+        command = np.ones_like(time)
+        plants = (
+            Plant("inertial", 3.0, taus=(0.5,), zeros=(0.1,)),
+            Plant("integrator", 1.2, integrators=2),
+        )
+        for plant in plants:
+            state = plant.initial_state(0.0)
+            y = np.empty_like(time)
+            _, y[0] = plant.step(state, float(command[0]), 0.0)
+            for i in range(len(time) - 1):
+                state, y[i + 1] = plant.step(state, command[i], dt)
+            response = control.forced_response(plant.linear, time, command)
+            reference = np.squeeze(response.outputs)
+            self.assertLess(np.max(np.abs(y - reference)), 0.02)
 
     def test_open_loop_matches_python_control(self):
         plant = Plant("inertial", gain=4.0, taus=(0.3,))
@@ -74,7 +92,7 @@ class PlantIdentificationTest(unittest.TestCase):
             ],
             kp=1.0,
         )
-        self.assertEqual(found.best.model.name, "inercyjny 2 + tarcie")
+        self.assertEqual(found.best.model.name, "inertial 2 + friction")
         self.assertLess(found.best.rmse, 0.2)
         self.assertEqual(found.kp, 1.0)
         self.assertEqual(found.best.kp, 1.0)
@@ -111,7 +129,33 @@ class PlantIdentificationTest(unittest.TestCase):
         self.assertEqual(models[0].name, "custom")
         self.assertEqual(models[0].kind, "integrator")
         self.assertEqual(models[0].order, 1)
+        self.assertEqual(models[0].integrators, 1)
+        self.assertEqual(models[0].zeros, 0)
         self.assertTrue(models[0].friction)
+
+    def test_models_file_reads_integrator_power_and_zeros(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "models.yaml"
+            path.write_text(
+                "\n".join(
+                    [
+                        "- integrators: 2",
+                        "  order: 1",
+                        "  zeros: 1",
+                        "  friction: false",
+                        "",
+                    ]
+                )
+            )
+            models = Model.read(path)
+        self.assertEqual(models[0].name, "integrator 2, lag 1, derivative 1")
+        self.assertEqual(models[0].integrators, 2)
+        self.assertEqual(models[0].zeros, 1)
+        self.assertEqual(models[0].kind, "integrator")
+
+    def test_too_many_zeros_are_rejected(self):
+        with self.assertRaises(ValueError):
+            Model.inertial(1, zeros=2)
 
     def test_models_file_rejects_an_unknown_kind(self):
         with tempfile.TemporaryDirectory() as folder:

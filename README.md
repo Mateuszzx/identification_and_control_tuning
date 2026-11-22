@@ -73,3 +73,7 @@ In the repository settings, set Pages → Build and deployment → Source to **G
 ```bash
 uv run pytest
 ```
+
+## License
+
+Released under the [MIT License](LICENSE).

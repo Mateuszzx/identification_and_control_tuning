@@ -11,7 +11,7 @@ class PidTuneTest(unittest.TestCase):
         plant = Plant("integrator", gain=0.8, taus=())
         with tempfile.TemporaryDirectory() as folder:
             path = Path(folder) / "plant.json"
-            plant.save(path, model="całkujący", kp=2.0, rmse=0.1)
+            plant.save(path, model="integrator", kp=2.0, rmse=0.1)
             loaded = pidtune.load_plant(path)
         self.assertIsInstance(loaded, Plant)
         self.assertEqual(loaded.kind, "integrator")

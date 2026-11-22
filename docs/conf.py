@@ -1,7 +1,8 @@
 """Sphinx configuration for the plant identification and PID tuning docs."""
 
 project = "Plant identification and PID tuning"
-author = "Mateuszzx"
+author = "Mateuszzx <mateuszwojcikv@gmail.com>"
+copyright = "2026, Mateuszzx <mateuszwojcikv@gmail.com>"
 version = "0.1.0"
 release = version
 

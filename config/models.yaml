@@ -1,49 +1,57 @@
 # Structures identification tries, in order. Copy a block to add another one.
-# kind: inertial or integrator
-# order: number of real poles. For an integrator this is the number of extra lags.
+# kind: inertial (integrators: 0) or integrator (integrators: 1), unless integrators is set
+# order: number of real lags (τ s + 1)
+# integrators: power of 1/s. 2 is a double integrator. Overrides kind.
+# zeros: number of real derivative factors (ζ s + 1). Must not exceed integrators + order.
 # friction: Coulomb dead-zone on the plant input
+#
+# - name: integrator 2, lag 1, derivative 1 + friction
+#   integrators: 2
+#   order: 1
+#   zeros: 1
+#   friction: true
 
-- name: inercyjny 1
+- name: inertial 1
   kind: inertial
   order: 1
   friction: false
 
-- name: inercyjny 1 + tarcie
+- name: inertial 1 + friction
   kind: inertial
   order: 1
   friction: true
 
-- name: inercyjny 2
+- name: inertial 2
   kind: inertial
   order: 2
   friction: false
 
-- name: inercyjny 2 + tarcie
+- name: inertial 2 + friction
   kind: inertial
   order: 2
   friction: true
 
-- name: inercyjny 3
+- name: inertial 3
   kind: inertial
   order: 3
   friction: false
 
-- name: inercyjny 3 + tarcie
+- name: inertial 3 + friction
   kind: inertial
   order: 3
   friction: true
 
-- name: całkujący + tarcie
+- name: integrator + friction
   kind: integrator
   order: 0
   friction: true
 
-- name: całkujący, inercja 1 + tarcie
+- name: integrator, lag 1 + friction
   kind: integrator
   order: 1
   friction: true
 
-- name: całkujący, inercja 2 + tarcie
+- name: integrator, lag 2 + friction
   kind: integrator
   order: 2
   friction: true

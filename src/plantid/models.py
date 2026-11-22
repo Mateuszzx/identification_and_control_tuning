@@ -1,14 +1,13 @@
 """Catalog of plant models the identification fits.
 
-An inertial model of order ``n`` is
+A structure is
 
-    G(s) = K / ((τ1 s + 1) ... (τn s + 1))
+    G(s) = K (ζ1 s + 1)...(ζm s + 1) / (s^q (τ1 s + 1)...(τn s + 1))
 
-An integrator with ``n`` lags is
-
-    G(s) = Kv / (s (τ1 s + 1) ... (τn s + 1))
-
-``friction`` puts a Coulomb dead-zone on the plant input. :meth:`Model.fit`
+``q`` is the integrator power, ``m`` is the number of real derivative zeros,
+and ``n`` is the number of real lags. ``q = 0`` is inertial. ``q = 1`` and
+``m = 0`` is a single integrator. ``friction`` puts a Coulomb dead-zone on
+the plant input. :meth:`Model.fit`
 estimates the gain, the time constants, and that threshold. The structures
 to try are read from a YAML file, not listed in this module.
 """
@@ -35,59 +34,83 @@ class Model:
     name : str
         Label used in the fit table.
     kind : {"inertial", "integrator"}
-        Plant family.
+        ``"integrator"`` when ``integrators`` is positive, otherwise ``"inertial"``.
     order : int
-        Number of real poles besides the integrator, if any.
+        Number of real lag poles, ``(τ s + 1)``.
     friction : bool
         Whether a Coulomb dead-zone is fitted on the input.
+    integrators : int
+        Power of ``1/s``. Default is 0.
+    zeros : int
+        Number of real derivative factors, ``(ζ s + 1)``. Default is 0.
     """
 
     name: str
     kind: Kind
     order: int
     friction: bool
+    integrators: int = 0
+    zeros: int = 0
 
     def __post_init__(self) -> None:
-        """Reject an impossible order.
+        """Reject a plant that is empty or not strictly proper.
 
         Raises
         ------
         ValueError
-            ``order`` is negative, or an inertial model has order zero.
+            A count is negative, there is no pole, the zeros are not fewer
+            than the poles, or ``kind`` disagrees with ``integrators``.
         """
-        if self.order < 0:
-            raise ValueError("order must be >= 0")
-        if self.kind == "inertial" and self.order < 1:
-            raise ValueError("an inertial model needs order >= 1")
+        if self.order < 0 or self.integrators < 0 or self.zeros < 0:
+            raise ValueError("order, integrators, and zeros must be >= 0")
+        if self.integrators + self.order < 1:
+            raise ValueError("the plant needs at least one pole")
+        if self.zeros > self.integrators + self.order:
+            raise ValueError("zeros must not outnumber poles, or the plant is improper")
+        expected = "integrator" if self.integrators else "inertial"
+        if self.kind != expected:
+            raise ValueError("kind must be integrator exactly when integrators is positive")
 
     @classmethod
     def inertial(
-        cls, order: int, *, friction: bool = False, name: str | None = None
+        cls,
+        order: int,
+        *,
+        friction: bool = False,
+        zeros: int = 0,
+        name: str | None = None,
     ) -> "Model":
-        """Inertial plant ``K / Π(τ s + 1)`` of the given order.
+        """Inertial plant of the given order, with optional real zeros.
 
         Parameters
         ----------
         order : int
-            Number of real poles. Must be at least 1.
+            Number of real poles. Must be at least 1 when there is no integrator.
         friction : bool, optional
             Fit a Coulomb input dead-zone. Default is false.
+        zeros : int, optional
+            Number of real derivative factors. Default is 0.
         name : str, optional
-            Catalog label. The default is the Polish name used in the fit table.
+            Catalog label. The default describes the structure.
 
         Returns
         -------
         Model
             Unfitted inertial structure.
         """
-        label = name or f"inercyjny {order}" + (" + tarcie" if friction else "")
-        return cls(label, "inertial", order, friction)
+        return cls._make(0, order, zeros, friction, name)
 
     @classmethod
     def integrator(
-        cls, lags: int = 0, *, friction: bool = False, name: str | None = None
+        cls,
+        lags: int = 0,
+        *,
+        friction: bool = False,
+        zeros: int = 0,
+        integrators: int = 1,
+        name: str | None = None,
     ) -> "Model":
-        """Integrator ``Kv / s`` with extra real poles.
+        """Integrator of the given power, with extra real poles and zeros.
 
         Parameters
         ----------
@@ -95,21 +118,66 @@ class Model:
             Number of extra real poles. Default is 0.
         friction : bool, optional
             Fit a Coulomb input dead-zone. Default is false.
+        zeros : int, optional
+            Number of real derivative factors. Default is 0.
+        integrators : int, optional
+            Power of ``1/s``. Default is 1.
         name : str, optional
-            Catalog label. The default is the Polish name used in the fit table.
+            Catalog label. The default describes the structure.
 
         Returns
         -------
         Model
             Unfitted integrator structure.
         """
-        if name is not None:
-            label = name
-        elif lags == 0:
-            label = "całkujący" + (" + tarcie" if friction else "")
+        return cls._make(integrators, lags, zeros, friction, name)
+
+    @classmethod
+    def _make(
+        cls,
+        integrators: int,
+        order: int,
+        zeros: int,
+        friction: bool,
+        name: str | None,
+    ) -> "Model":
+        """Build one structure, naming it when ``name`` is omitted.
+
+        Parameters
+        ----------
+        integrators : int
+            Power of ``1/s``.
+        order : int
+            Number of real lag poles.
+        zeros : int
+            Number of real derivative factors.
+        friction : bool
+            Whether the input dead-zone is fitted.
+        name : str or None
+            Catalog label. ``None`` builds one from the counts.
+
+        Returns
+        -------
+        Model
+            Unfitted structure.
+        """
+        kind = "integrator" if integrators else "inertial"
+        if name is None:
+            if integrators == 0:
+                label = f"inertial {order}"
+            elif integrators == 1 and order == 0:
+                label = "integrator"
+            elif integrators == 1:
+                label = f"integrator, lag {order}"
+            else:
+                label = f"integrator {integrators}, lag {order}"
+            if zeros:
+                label += f", derivative {zeros}"
+            if friction:
+                label += " + friction"
         else:
-            label = f"całkujący, inercja {lags}" + (" + tarcie" if friction else "")
-        return cls(label, "integrator", lags, friction)
+            label = name
+        return cls(label, kind, order, friction, integrators, zeros)
 
     @classmethod
     def read(cls, path) -> list["Model"]:
@@ -118,9 +186,10 @@ class Model:
         Parameters
         ----------
         path : str or pathlib.Path
-            YAML list. Each item has ``kind`` (``inertial`` or ``integrator``),
-            ``order`` (lags for an integrator), and ``friction``. ``name`` is
-            optional.
+            YAML list. Each item has ``order`` and ``friction``. ``kind`` is
+            ``inertial`` or ``integrator``. ``integrators`` is the power of
+            ``1/s`` and overrides ``kind``. ``zeros`` is the number of real
+            derivative factors. ``name`` is optional.
 
         Returns
         -------
@@ -161,19 +230,30 @@ class Model:
         """
         if not isinstance(item, dict):
             raise ValueError(f"{path} has an entry that is not a mapping")
-        kind = item.get("kind")
-        if kind not in ("inertial", "integrator"):
-            raise ValueError(f"{path} has unknown kind {kind!r}")
         try:
             order = int(item["order"])
         except (KeyError, TypeError, ValueError) as exc:
-            raise ValueError(f"{path} needs an integer order for kind {kind!r}") from exc
+            raise ValueError(f"{path} needs an integer order") from exc
+        kind = item.get("kind")
+        if "integrators" in item:
+            try:
+                integrators = int(item["integrators"])
+            except (TypeError, ValueError) as exc:
+                raise ValueError(f"{path} needs an integer integrators count") from exc
+        elif kind == "integrator":
+            integrators = 1
+        elif kind in (None, "inertial"):
+            integrators = 0
+        else:
+            raise ValueError(f"{path} has unknown kind {kind!r}")
+        try:
+            zeros = int(item.get("zeros", 0))
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"{path} needs an integer zeros count") from exc
         friction = bool(item.get("friction", False))
         name = item.get("name")
         name = None if name is None else str(name)
-        if kind == "inertial":
-            return cls.inertial(order, friction=friction, name=name)
-        return cls.integrator(order, friction=friction, name=name)
+        return cls._make(integrators, order, zeros, friction, name)
 
     def fit(
         self,
@@ -252,16 +332,19 @@ class Model:
             model has friction. Bounds are included.
         """
         n = self.order
-        if self.kind == "inertial":
+        if self.integrators == 0:
             gain0 = np.log(20.0 if self.friction else 8.0)
             tau0 = np.log(np.geomspace(30.0 if self.friction else 8.0, 0.1, n))
         else:
             gain0 = np.log(0.8)
             tau0 = np.log(np.geomspace(0.2, 0.05, n)) if n else np.array([])
+        zero0 = np.log(np.geomspace(0.3, 0.05, self.zeros)) if self.zeros else np.array([])
         params = lmfit.Parameters()
         params.add("log_gain", value=float(gain0), min=-2.0, max=8.0)
         for index, value in enumerate(tau0):
             params.add(f"log_tau_{index}", value=float(value), min=-7.0, max=8.0)
+        for index, value in enumerate(zero0):
+            params.add(f"log_zero_{index}", value=float(value), min=-7.0, max=8.0)
         if self.friction:
             params.add("log_fc", value=float(np.log(10.0)), min=0.0, max=3.5)
         return params
@@ -277,10 +360,11 @@ class Model:
         Returns
         -------
         numpy.ndarray
-            ``[log_gain, log_tau_0, ..., log_fc]``. ``log_fc`` is omitted without friction.
+            ``[log_gain, log_tau_*, log_zero_*, log_fc]``. ``log_fc`` is omitted without friction.
         """
         values = [params["log_gain"].value]
         values.extend(params[f"log_tau_{index}"].value for index in range(self.order))
+        values.extend(params[f"log_zero_{index}"].value for index in range(self.zeros))
         if self.friction:
             values.append(params["log_fc"].value)
         return np.asarray(values, dtype=float)
@@ -318,6 +402,13 @@ class Model:
             Plant with positive gain, time constants sorted descending, and Fc.
         """
         gain = float(np.exp(p[0]))
-        taus = tuple(sorted((float(np.exp(v)) for v in p[1 : 1 + self.order]), reverse=True))
-        fc = float(np.exp(p[-1])) if self.friction else 0.0
-        return Plant(self.kind, gain, taus, fc)
+        cursor = 1
+        pole_logs = p[cursor : cursor + self.order]
+        taus = tuple(sorted((float(np.exp(v)) for v in pole_logs), reverse=True))
+        cursor += self.order
+        zeros = tuple(
+            sorted((float(np.exp(v)) for v in p[cursor : cursor + self.zeros]), reverse=True)
+        )
+        cursor += self.zeros
+        fc = float(np.exp(p[cursor])) if self.friction else 0.0
+        return Plant(self.kind, gain, taus, fc, integrators=self.integrators, zeros=zeros)
