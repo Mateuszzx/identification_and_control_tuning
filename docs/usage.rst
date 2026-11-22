@@ -15,6 +15,7 @@ the file starts at the repository root.
    identify:
      log: data/fr_prop_pid.csv
      out: model/plant.json
+     kp: 2.0
 
    tune:
      plant: model/plant.json
@@ -32,7 +33,8 @@ the file starts at the repository root.
      population: 50
 
 ``identify.log`` is the CSV described in the :doc:`quickstart`. ``identify.out``
-is the plant JSON. Tuning reads ``tune.plant``, which is normally the same file.
+is the plant JSON. ``identify.kp`` is the proportional gain of the loop that
+recorded the log. Tuning reads ``tune.plant``, which is normally the same file.
 
 ``dt`` is the simulation sample time in seconds. ``dead_zone`` is passed to
 :func:`pid.controller.make`. The shipped controller clears an error inside it
@@ -65,7 +67,7 @@ Identify
 lmfit minimizes the output error of each candidate in the catalog. The
 catalog is inertial plants of order 1–3, with and without Coulomb friction,
 then integrators with 0, 1, and 2 lags and friction. The proportional gain
-is ``median(p_term / error)`` from the log. It is not a fitted parameter.
+is ``identify.kp``. It is not a fitted parameter.
 
 The lowest RMSE is saved as a :class:`plantid.plant.Plant`: a transfer function
 with a Coulomb dead-zone on the input. ``output/identify.png`` shows the measured

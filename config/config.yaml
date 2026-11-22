@@ -4,6 +4,8 @@
 identify:
   log: data/fr_prop_pid.csv
   out: model/plant.json
+  # Proportional gain of the loop that recorded the log. Not fitted.
+  kp: 2.0
 
 tune:
   plant: model/plant.json

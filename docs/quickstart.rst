@@ -29,14 +29,13 @@ The log needs these columns:
      - Setpoint :math:`w(t)`.
    * - ``measure_value``
      - Sensor reading :math:`y_m(t)`.
-   * - ``error``
-     - :math:`e(t) = w(t) - y_m(t)`.
-   * - ``p_term``
-     - Proportional part of the command :math:`u(t)`.
 
-Edit ``config/config.yaml`` to point ``identify.log`` at that file and to set
-the setpoint levels and the ``Kp``, ``Ki``, and ``Kd`` limits. Paths in the
-file are relative to the repository root.
+Other columns are ignored. ``identify.kp`` in the config is the proportional
+gain of the loop that recorded the log. It is not fitted.
+
+Edit ``config/config.yaml`` to point ``identify.log`` at that file, set
+``identify.kp``, and set the setpoint levels and the ``Kp``, ``Ki``, and
+``Kd`` limits. Paths in the file are relative to the repository root.
 
 Another config file can be passed explicitly:
 

@@ -18,10 +18,13 @@ class IdentifySetup:
         Closed-loop CSV log.
     out : pathlib.Path
         JSON file that receives the fitted plant.
+    kp : float
+        Proportional gain of the loop that collected the log. Not fitted.
     """
 
     log: Path
     out: Path
+    kp: float
 
 
 @dataclass(frozen=True)
@@ -76,7 +79,7 @@ class Config:
     Attributes
     ----------
     identify : IdentifySetup
-        Log path and plant output path.
+        Log path, plant output path, and the recorded proportional gain.
     tune : TuneSetup
         Waveform, limits, and search settings.
     """
@@ -209,9 +212,13 @@ def _identify(section: dict, root: Path) -> IdentifySetup:
     Returns
     -------
     IdentifySetup
-        Log path and plant output path.
+        Log path, plant output path, and the recorded proportional gain.
     """
-    return IdentifySetup(log=_file(section, "log", root), out=_file(section, "out", root))
+    return IdentifySetup(
+        log=_file(section, "log", root),
+        out=_file(section, "out", root),
+        kp=float(section["kp"]),
+    )
 
 
 def _tune(section: dict, root: Path) -> TuneSetup:

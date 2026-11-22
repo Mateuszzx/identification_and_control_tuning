@@ -31,7 +31,7 @@ Signals
      - ``measure_value``. Passed to :meth:`~pid.controller.PID.step` as ``ym``.
    * - :math:`e(t)`
      - Summing junction
-     - ``error``. :math:`e(t) = w(t) - y_m(t)`.
+     - Computed as :math:`w(t) - y_m(t)`. Not a required log column.
    * - :math:`u(t)`
      - PID output
      - Controller command. Returned by :meth:`~pid.controller.PID.step` and passed to :meth:`~plantid.plant.Plant.step` as ``u``.
@@ -84,8 +84,8 @@ Identification
 --------------
 
 The log is this loop running with a proportional controller, so the PID block
-is :math:`u(t) = K_p e(t)` while the data were collected. :math:`K_p` is read
-from the log as ``median(p_term / error)``. It is not fitted.
+is :math:`u(t) = K_p e(t)` while the data were collected. :math:`K_p` is
+``identify.kp`` in the config. It is not fitted.
 
 :meth:`plantid.log.Log.identify` tries the catalog: inertial orders 1–3, with
 and without friction, then integrators with 0, 1, and 2 lags and friction.

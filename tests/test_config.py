@@ -13,6 +13,7 @@ class ConfigTest(unittest.TestCase):
         self.assertEqual(cfg.tune.plant, cfg.identify.out)
         self.assertTrue(cfg.tune.levels)
         self.assertEqual(len(cfg.tune.kp), 2)
+        self.assertEqual(cfg.identify.kp, 2.0)
 
     def test_relative_paths_and_a_fixed_gain(self):
         with tempfile.TemporaryDirectory() as folder:
@@ -23,6 +24,7 @@ class ConfigTest(unittest.TestCase):
                         "identify:",
                         "  log: data/log.csv",
                         "  out: model/plant.json",
+                        "  kp: 1",
                         "tune:",
                         "  plant: model/plant.json",
                         "  dt: 0.015",
@@ -57,6 +59,7 @@ class ConfigTest(unittest.TestCase):
                         "identify:",
                         "  log: data/log.csv",
                         "  out: model/plant.json",
+                        "  kp: 1",
                         "tune:",
                         "  plant: model/plant.json",
                         "  dt: 0.015",

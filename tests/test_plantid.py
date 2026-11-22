@@ -79,10 +79,18 @@ class PlantIdentificationTest(unittest.TestCase):
         self.assertEqual(found.kp, 1.0)
         self.assertEqual(found.best.kp, 1.0)
 
-    def test_loop_gain_reads_recorded_p(self):
-        error = np.array([0.0, 4.0, -2.0, 10.0])
-        p_term = 2.0 * error
-        self.assertEqual(Log.gain(error, p_term), 2.0)
+    def test_log_reads_time_setpoint_and_measurement(self):
+        with tempfile.TemporaryDirectory() as folder:
+            path = Path(folder) / "log.csv"
+            path.write_text(
+                "time_s,set_point,measure_value,error,p_term\n"
+                "0.1,2,0.5,1.5,3\n"
+                "0.0,1,0.0,1,2\n"
+            )
+            record = Log.read(path)
+        self.assertEqual(record.time.tolist(), [0.0, 0.1])
+        self.assertEqual(record.setpoint.tolist(), [1.0, 2.0])
+        self.assertEqual(record.measurement.tolist(), [0.0, 0.5])
 
 
 class FirmwarePidTest(unittest.TestCase):
