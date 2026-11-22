@@ -3,10 +3,10 @@
 Edit this file to match your controller. The shipped :meth:`PID.step` is
 ``PID.cpp``:
 
-1. ``error = setpoint - measurement``, cleared when ``|error| < dead_zone``.
-2. ``acc = clamp(error + (1 - smoothing) * acc, ±anti_windup)``.
-3. ``p = Kp * error``, ``i = acc * dt * Ki``,
-   ``d = Kd * (error - last_error) / dt``. The first sample uses
+1. ``e = w - ym``, cleared when ``|e| < dead_zone``.
+2. ``acc = clamp(e + (1 - smoothing) * acc, ±anti_windup)``.
+3. ``p = Kp * e``, ``i = acc * dt * Ki``,
+   ``d = Kd * (e - last_error) / dt``. The first sample uses
    ``last_error = 0``.
 4. The output is lifted to ``±min_output`` and clipped to ``±max_output``.
 
@@ -96,37 +96,41 @@ class PID:
         self.acc = 0.0
         self.last_error = 0.0
 
-    def step(self, setpoint: float, measurement: float, dt: float) -> float:
+    def step(self, w: float, ym: float, dt: float) -> float:
         """One controller sample.
+
+        ``w`` is the setpoint :math:`w(t)` and ``ym`` is the sensor reading
+        :math:`y_m(t)` on the closed-loop drawing. The return value is the
+        command :math:`u(t)`.
 
         Parameters
         ----------
-        setpoint : float
-            Reference for this sample.
-        measurement : float
-            Measured output, already quantised when the tuner uses an encoder step.
+        w : float
+            Setpoint :math:`w(t)` for this sample.
+        ym : float
+            Measured output :math:`y_m(t)`.
         dt : float
             Sample time in seconds. A non-positive value sets the derivative to 0.
 
         Returns
         -------
         float
-            Controller output.
+            Controller output :math:`u(t)`.
         """
-        error = float(setpoint - measurement)
-        if abs(error) < self.limits.dead_zone:
-            error = 0.0
-        acc = error + (1.0 - self.limits.smoothing) * self.acc
+        e = float(w - ym)
+        if abs(e) < self.limits.dead_zone:
+            e = 0.0
+        acc = e + (1.0 - self.limits.smoothing) * self.acc
         acc = float(np.clip(acc, -self.limits.anti_windup, self.limits.anti_windup))
-        d_term = 0.0 if dt <= 0.0 else self.gains.kd * (error - self.last_error) / dt
-        out = self.gains.kp * error + acc * dt * self.gains.ki + d_term
-        if abs(out) < self.limits.min_output:
-            out = float(np.sign(out) * self.limits.min_output)
-        if abs(out) > self.limits.max_output:
-            out = float(np.sign(out) * self.limits.max_output)
+        d_term = 0.0 if dt <= 0.0 else self.gains.kd * (e - self.last_error) / dt
+        u = self.gains.kp * e + acc * dt * self.gains.ki + d_term
+        if abs(u) < self.limits.min_output:
+            u = float(np.sign(u) * self.limits.min_output)
+        if abs(u) > self.limits.max_output:
+            u = float(np.sign(u) * self.limits.max_output)
         self.acc = acc
-        self.last_error = error
-        return out
+        self.last_error = e
+        return u
 
 
 def make(

@@ -8,6 +8,7 @@ release = version
 extensions = [
     "sphinx.ext.autodoc",
     "sphinx.ext.intersphinx",
+    "sphinx.ext.mathjax",
     "sphinx.ext.napoleon",
     "sphinx.ext.viewcode",
 ]
@@ -28,6 +29,9 @@ intersphinx_mapping = {
 
 html_theme = "sphinx_rtd_theme"
 html_title = project
+html_logo = "_static/close_loop.svg"
+html_static_path = ["_static"]
+html_css_files = ["custom.css"]
 html_theme_options = {
     "navigation_depth": 3,
     "collapse_navigation": False,

@@ -19,13 +19,13 @@ class Log:
     time : numpy.ndarray
         Sample times, sorted.
     setpoint : numpy.ndarray
-        Logged reference.
+        Logged setpoint ``set_point``, the signal :math:`w(t)`.
     measurement : numpy.ndarray
-        Logged output.
+        Logged sensor reading ``measure_value``, the signal :math:`y_m(t)`.
     error : numpy.ndarray
-        Logged ``setpoint - measurement``.
+        Logged ``error``, the signal :math:`e(t) = w(t) - y_m(t)`.
     p_term : numpy.ndarray
-        Logged proportional term.
+        Logged proportional term of :math:`u(t)`.
     """
 
     time: np.ndarray
@@ -84,7 +84,7 @@ class Log:
         Parameters
         ----------
         error : numpy.ndarray
-            Logged ``setpoint - measurement``.
+            Logged error :math:`e(t) = w(t) - y_m(t)`.
         p_term : numpy.ndarray
             Logged proportional term, the same length as ``error``.
 

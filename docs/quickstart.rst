@@ -26,13 +26,13 @@ The log needs these columns:
    * - ``time_s``
      - Sample time, in seconds.
    * - ``set_point``
-     - Reference sent to the proportional loop.
+     - Setpoint :math:`w(t)`.
    * - ``measure_value``
-     - Measured output.
+     - Sensor reading :math:`y_m(t)`.
    * - ``error``
-     - ``set_point - measure_value``.
+     - :math:`e(t) = w(t) - y_m(t)`.
    * - ``p_term``
-     - Proportional term recorded by the firmware.
+     - Proportional part of the command :math:`u(t)`.
 
 Edit ``config/config.yaml`` to point ``identify.log`` at that file and to set
 the setpoint levels and the ``Kp``, ``Ki``, and ``Kd`` limits. Paths in the

@@ -129,15 +129,18 @@ class Plant:
             state[-1] = y0
         return state
 
-    def step(self, state: np.ndarray, command: float, dt: float):
+    def step(self, state: np.ndarray, u: float, dt: float):
         """Advance one zero-order hold.
+
+        ``u`` is the controller output :math:`u(t)` on the closed-loop drawing.
+        The disturbance :math:`z(t)` is zero. The returned output is :math:`y(t)`.
 
         Parameters
         ----------
         state : numpy.ndarray
             State at the beginning of the step.
-        command : float
-            Controller output, before friction.
+        u : float
+            Controller output :math:`u(t)`, before friction.
         dt : float
             Step length in seconds. A non-positive value holds the state.
 
@@ -145,12 +148,12 @@ class Plant:
         -------
         state : numpy.ndarray
             State at the end of the step.
-        output : float
-            Plant output at the end of the step.
+        y : float
+            Plant output :math:`y(t)` at the end of the step.
         """
         if dt <= 0.0:
             return state, float(self._states.C @ state)
-        ue = _deadzone(command, self.fc)
+        ue = _deadzone(u, self.fc)
         discrete = self._discrete(dt)
         nxt = np.asarray(discrete.A @ state + np.asarray(discrete.B).reshape(-1) * ue).reshape(-1)
         return nxt, float(np.asarray(discrete.C @ nxt).reshape(-1)[0])
@@ -158,35 +161,39 @@ class Plant:
     def proportional_response(
         self,
         time: np.ndarray,
-        setpoint: np.ndarray,
+        w: np.ndarray,
         kp: float,
         y0: float,
     ) -> np.ndarray:
-        """Closed loop ``u = kp (r - y)`` sampled on ``time``.
+        """Closed loop ``u = kp * (w - ym)`` sampled on ``time``.
+
+        The sensor is the identity, so ``ym`` is the simulated output ``y``.
+        The disturbance ``z`` is zero.
 
         Parameters
         ----------
         time : numpy.ndarray
             Sample times. The interval between samples is the hold time.
-        setpoint : numpy.ndarray
-            Reference, the same length as ``time``.
+        w : numpy.ndarray
+            Setpoint :math:`w(t)`, the same length as ``time``.
         kp : float
             Proportional gain.
         y0 : float
-            Output at ``time[0]``.
+            Output :math:`y(t)` at ``time[0]``.
 
         Returns
         -------
         numpy.ndarray
-            Simulated output, the same length as ``time``.
+            Simulated plant output :math:`y(t)`, the same length as ``time``.
         """
         state = self.initial_state(y0)
-        out = np.empty(len(time))
-        out[0] = y0
+        y = np.empty(len(time))
+        y[0] = y0
         for i in range(len(time) - 1):
-            command = kp * (setpoint[i] - out[i])
-            state, out[i + 1] = self.step(state, command, time[i + 1] - time[i])
-        return out
+            ym = y[i]
+            u = kp * (w[i] - ym)
+            state, y[i + 1] = self.step(state, u, time[i + 1] - time[i])
+        return y
 
     def closed_loop(self, kp: float) -> control.TransferFunction:
         """Linear loop ``Kp G / (1 + Kp G)``.
@@ -242,24 +249,24 @@ class Plant:
         return hit
 
 
-def _deadzone(command: float, fc: float) -> float:
-    """Coulomb dead-zone.
+def _deadzone(u: float, fc: float) -> float:
+    """Coulomb dead-zone on the plant input :math:`u(t)`.
 
     Parameters
     ----------
-    command : float
-        Actuator command before friction.
+    u : float
+        Controller output :math:`u(t)`, before friction.
     fc : float
-        Coulomb threshold. ``fc <= 0`` leaves the command unchanged.
+        Coulomb threshold. ``fc <= 0`` leaves ``u`` unchanged.
 
     Returns
     -------
     float
-        ``0`` when ``abs(command) < fc``, otherwise ``command - fc * sign(command)``.
+        ``0`` when ``abs(u) < fc``, otherwise ``u - fc * sign(u)``.
     """
     if fc <= 0.0:
-        return float(command)
-    return float(np.sign(command) * max(abs(command) - fc, 0.0))
+        return float(u)
+    return float(np.sign(u) * max(abs(u) - fc, 0.0))
 
 
 def _companion(kind: str, gain: float, taus: tuple[float, ...]):

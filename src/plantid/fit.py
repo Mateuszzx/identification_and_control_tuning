@@ -136,9 +136,9 @@ class Fit:
         time : numpy.ndarray
             Sample times from the log.
         setpoint : numpy.ndarray
-            Logged reference.
+            Logged setpoint :math:`w(t)`.
         measurement : numpy.ndarray
-            Logged output.
+            Logged sensor reading :math:`y_m(t)`.
         models : list of Model
             Structures to fit. Must not be empty.
         kp : float

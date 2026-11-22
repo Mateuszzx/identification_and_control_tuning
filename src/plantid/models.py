@@ -142,9 +142,9 @@ class Model:
         time : numpy.ndarray
             Sample times from the log.
         setpoint : numpy.ndarray
-            Logged reference.
+            Logged setpoint :math:`w(t)`.
         measurement : numpy.ndarray
-            Logged output. The first sample is the initial condition.
+            Logged sensor reading :math:`y_m(t)`. The first sample is the initial condition.
         kp : float
             Proportional gain of the loop that collected the log.
 

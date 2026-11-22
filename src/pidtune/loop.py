@@ -13,7 +13,7 @@ from plantid.plant import Plant
 class Trajectory(tuple):
     """``(y, u)`` from :func:`simulate`. Unpacks like a pair.
 
-    ``y`` is the simulated plant output and ``u`` is the controller command.
+    ``y`` is the plant output :math:`y(t)` and ``u`` is the controller output :math:`u(t)`.
     """
 
     def __new__(cls, y: np.ndarray, u: np.ndarray):
@@ -22,9 +22,9 @@ class Trajectory(tuple):
         Parameters
         ----------
         y : numpy.ndarray
-            Simulated plant output.
+            Simulated plant output :math:`y(t)`.
         u : numpy.ndarray
-            Controller output.
+            Controller output :math:`u(t)`.
 
         Returns
         -------
@@ -86,7 +86,7 @@ def steps(levels, hold: float, dt: float) -> np.ndarray:
 
 
 def simulate(
-    plant: control.NonlinearIOSystem,
+    plant: Plant,
     reference: np.ndarray,
     gains: Gains,
     *,
@@ -97,12 +97,15 @@ def simulate(
 ) -> Trajectory:
     """Run ``plant`` under the controller from :func:`pid.controller.make`.
 
+    The sensor is the identity, so :math:`y_m(t) = y(t)`. The disturbance
+    :math:`z(t)` is zero. ``reference`` is the setpoint :math:`w(t)`.
+
     Parameters
     ----------
     plant : plantid.plant.Plant
         Plant to simulate.
     reference : numpy.ndarray
-        Sampled setpoint.
+        Sampled setpoint :math:`w(t)`.
     gains : pid.controller.Gains
         PID gains.
     dt : float
@@ -112,23 +115,24 @@ def simulate(
     dead_zone : float, optional
         Passed to :func:`pid.controller.make`.
     y0 : float, optional
-        Initial plant output. Default is 0.
+        Initial plant output :math:`y(0)`. Default is 0.
 
     Returns
     -------
     Trajectory
-        Plant output and controller command.
+        Plant output :math:`y(t)` and controller command :math:`u(t)`.
     """
     pid = make(gains, limits=limits, dead_zone=dead_zone)
     state = plant.initial_state(y0)
     y_now = float(y0)
     y = np.empty(len(reference))
     u = np.empty(len(reference))
-    for i, setpoint in enumerate(reference):
-        command = pid.step(float(setpoint), y_now, dt)
-        state, y_now = plant.step(state, command, dt)
+    for i, w in enumerate(reference):
+        ym = y_now
+        u_now = pid.step(float(w), ym, dt)
+        state, y_now = plant.step(state, u_now, dt)
         y[i] = y_now
-        u[i] = command
+        u[i] = u_now
     return Trajectory(y, u)
 
 
@@ -168,22 +172,22 @@ def ki_that_holds(plant: Plant, levels, limits: Limits, dt: float) -> float:
     return needed / rate
 
 
-def _holding_command(plant: Plant, setpoint: float) -> float:
-    """Actuator command that keeps ``setpoint`` once the plant has stopped.
+def _holding_command(plant: Plant, w: float) -> float:
+    """Command :math:`u` that holds setpoint :math:`w` once the plant has stopped.
 
     Parameters
     ----------
     plant : plantid.plant.Plant
         Plant whose ``kind``, ``gain``, and ``fc`` set the command.
-    setpoint : float
-        Output to hold.
+    w : float
+        Setpoint to hold.
 
     Returns
     -------
     float
-        ``Fc + abs(setpoint) / K`` for an inertial plant, and ``Fc`` for an
+        ``Fc + abs(w) / K`` for an inertial plant, and ``Fc`` for an
         integrator or a non-positive gain.
     """
     if plant.kind == "integrator" or plant.gain <= 0.0:
         return plant.fc
-    return plant.fc + abs(float(setpoint)) / plant.gain
+    return plant.fc + abs(float(w)) / plant.gain

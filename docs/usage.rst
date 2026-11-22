@@ -82,13 +82,14 @@ Tune
 Run identification first, so ``tune.plant`` exists. The simulated controller
 is :meth:`pid.controller.PID.step`. The shipped body matches ``PID.cpp``:
 
-1. ``error = setpoint - measurement``, cleared when ``|error| < dead_zone``.
-2. The accumulator is ``error + (1 - smoothing) * acc``, clamped to
+1. ``e = w - ym``, cleared when ``|e| < dead_zone``. ``w`` is the setpoint
+   and ``ym`` is the sensor reading.
+2. The accumulator is ``e + (1 - smoothing) * acc``, clamped to
    ``±anti_windup``.
-3. ``p = Kp * error``, ``i = acc * dt * Ki``, and
-   ``d = Kd * (error - last_error) / dt``. The first sample uses
+3. ``p = Kp * e``, ``i = acc * dt * Ki``, and
+   ``d = Kd * (e - last_error) / dt``. The first sample uses
    ``last_error = 0``.
-4. The output is lifted to ``±min_output`` and clipped to ``±max_output``.
+4. The command ``u`` is lifted to ``±min_output`` and clipped to ``±max_output``.
 
 To match a different PID, edit ``src/pid/controller.py``. Keep ``kp``, ``ki``,
 and ``kd``. Change :func:`pid.controller.integral_rate` when the integral
